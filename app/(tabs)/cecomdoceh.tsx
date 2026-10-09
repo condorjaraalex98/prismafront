@@ -75,17 +75,22 @@ export default function ReportesWebScreen() {
   const [totalMisRegistros, setTotalMisRegistros] = useState(0);
   const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
 const obtenerUrlFoto = (foto: any) => {
+  console.log("Foto cruda recibida:", foto); // <--- AÑADE ESTO
+  
   if (!foto) return "";
   const ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
-  if (!ruta) return "";
   
-  // Si ya es una URL completa (como Cloudflare R2 o Base64), la retorna intacta
+  console.log("Ruta extraída:", ruta); // <--- AÑADE ESTO
+  
   if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
     return ruta;
   }
   
   const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
-  return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
+  const urlFinal = `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
+  
+  console.log("URL final generada:", urlFinal); // <--- AÑADE ESTO
+  return urlFinal;
 };
   // Función de redirección de ejemplo (puedes llamarla desde cualquier botón o evento)
   const cambiarDePagina = (rutaDestino: string) => {
@@ -264,7 +269,7 @@ const handleGuardarCambios = async () => {
 
         const response = await fetch(url);
         const json = await response.json();
-
+console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
         if (json && json.success && Array.isArray(json.data)) {
           setReportesCompletos(json.data);
           setTotalRegistrosBD(json.total || 0);
