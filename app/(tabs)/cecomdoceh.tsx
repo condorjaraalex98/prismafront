@@ -74,7 +74,19 @@ export default function ReportesWebScreen() {
   const [isFinished, setIsFinished] = useState(false);
   const [totalMisRegistros, setTotalMisRegistros] = useState(0);
   const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
-
+const obtenerUrlFoto = (foto: any) => {
+  const ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || "");
+  if (!ruta) return "";
+  
+  // Si ya es una URL completa (Cloudflare R2, externa, o Base64), la respetamos
+  if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
+    return ruta;
+  }
+  
+  // Si es una ruta relativa del servidor, le anteponemos la URL activa de producción o desarrollo
+  const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
+  return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
+};
   // Función de redirección de ejemplo (puedes llamarla desde cualquier botón o evento)
   const cambiarDePagina = (rutaDestino: string) => {
        router.replace("/cecomdoceh");
@@ -2360,7 +2372,7 @@ const handleGuardarCambios = async () => {
             {/* Mapeo de URLs / Base64 */}
             {Array.isArray(fotosArray) &&
               fotosArray.map((foto: any, index: number) => {
-                const urlFoto = typeof foto === "string" ? foto : (foto.url_imagen || foto.url);
+                const urlFoto = obtenerUrlFoto(foto);
                 return (
                   <div
                     key={index}
