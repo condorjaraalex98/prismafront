@@ -28,7 +28,7 @@ const BACKGROUND_IMAGE =
 export default function HomeScreen() {
   const router = useRouter();
   const { login } = useAuth();
-
+const [showSupport, setShowSupport] = useState(false);   // Estado para mostrar/ocultar soporte
   const [usuario, setUsuario] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -134,54 +134,63 @@ export default function HomeScreen() {
                  PRISMA OPS
                 </ThemedText>
 
-                <View style={styles.form}>
-                  <ThemedText style={styles.label}>USUARIO</ThemedText>
-                  <TextInput
-                    style={styles.input}
-                    value={usuario}
-                    onChangeText={(t) => setUsuario(t.toUpperCase())}
-                    autoCapitalize="characters"
-                    placeholder="Ingrese su DNI"
-                    placeholderTextColor="#94A3B8"
-                  />
+               <View style={styles.form}>
+      <ThemedText style={styles.label}>USUARIO</ThemedText>
+      <TextInput
+        style={styles.input}
+        value={usuario}
+        onChangeText={(t) => setUsuario(t.toUpperCase())}
+        autoCapitalize="characters"
+        placeholder="Ingrese su Usuario"
+        placeholderTextColor="#94A3B8"
+      />
 
-                  <ThemedText style={styles.label}>CONTRASEÑA</ThemedText>
-                  <TextInput
-                    style={styles.input}
-                    value={contrasena}
-                    onChangeText={setContrasena}
-                    secureTextEntry
-                    placeholder="••••••••"
-                    placeholderTextColor="#94A3B8"
-                  />
+      <ThemedText style={styles.label}>CONTRASEÑA</ThemedText>
+      <TextInput
+        style={styles.input}
+        value={contrasena}
+        onChangeText={setContrasena}
+        secureTextEntry
+        placeholder="••••••••"
+        placeholderTextColor="#94A3B8"
+      />
 
-                  <TouchableOpacity
-                    style={styles.button}
-                    onPress={handleLogin}
-                    activeOpacity={0.8}
-                  >
-                    <ThemedText style={styles.buttonText}>
-                      INGRESAR AL SISTEMA
-                    </ThemedText>
-                  </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={handleLogin}
+        activeOpacity={0.8}
+      >
+        <ThemedText style={styles.buttonText}>
+          INGRESAR AL SISTEMA
+        </ThemedText>
+      </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={() => setModalVisible(true)}
-                    style={styles.forgotPassword}
-                  >
-                    <ThemedText style={styles.forgotText}>
-                      ¿Desea cambiar su contraseña?
-                    </ThemedText>
-                   </TouchableOpacity>
-                   
-                   <TouchableOpacity
-                    onPress={() => setModalVisible(true)}
-                    style={styles.forgotPassword}
-                  >
-                    <ThemedText style={styles.supportName}>Roberto Alexander Cóndor Jara</ThemedText>
-                    <ThemedText style={styles.supportEmail}>condorjaraa@gmail.com - 997356558</ThemedText>
-                  </TouchableOpacity>
-                </View>
+      {/* Botón para cambiar contraseña */}
+      <TouchableOpacity
+        onPress={() => setModalVisible(true)}
+        style={styles.forgotPassword}
+      >
+        <ThemedText style={styles.forgotText}>
+          ¿Desea cambiar su contraseña?
+        </ThemedText>
+      </TouchableOpacity>
+       
+      {/* Botón de Soporte Técnico (Alterna la visibilidad abajo) */}
+      <TouchableOpacity
+        onPress={() => setShowSupport(!showSupport)}
+        style={styles.forgotPassword}
+      >
+        <ThemedText style={styles.supportName}>Soporte técnico</ThemedText>
+      </TouchableOpacity>
+
+      {/* Datos de soporte que aparecen/desaparecen abajo al presionar */}
+      {showSupport && (
+        <View style={styles.supportContainer}>
+          <ThemedText style={styles.supportName}>Roberto Alexander Cóndor Jara</ThemedText>
+          <ThemedText style={styles.supportEmail}>condorjaraa@gmail.com - 997356558</ThemedText>
+        </View>
+      )}
+    </View>
                 
               </View>
               
@@ -396,6 +405,15 @@ const styles = StyleSheet.create({
     padding: 22,
     elevation: 25,
   },
+  supportContainer: {
+  marginTop: 8,
+  padding: 12,
+  backgroundColor: '#F8FAFC', // Un fondo sutil (gris muy claro / azulado)
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#E2E8F0',
+  alignItems: 'center',        // Centra el texto (o cámbialo a 'flex-start' si prefieres a la izquierda)
+},
   modalTitle: {
     fontSize: 20,
     fontWeight: "900",
