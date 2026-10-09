@@ -76,18 +76,20 @@ export default function ReportesWebScreen() {
   const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
 const obtenerUrlFoto = (foto: any) => {
   if (!foto) return "";
-  
-  // Extraemos el string de la foto de forma segura
-  const ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
+
+  // Extraemos el texto de la foto
+  let ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
   if (!ruta) return "";
-  
-  // SI LA RUTA YA ES UNA URL ABSOLUTA (como la de Cloudflare R2 o http), devuélvela DIRECTAMENTE sin pegarle nada adelante
-  if (ruta.includes("http://") || ruta.includes("https://") || ruta.startsWith("data:image")) {
-    // Limpiamos posibles espacios o corchetes sobrantes si los hubiera
-    return ruta.replace(/['"]+/g, "").trim();
+
+  // Limpiamos comillas extra o corchetes por si acaso
+  ruta = String(ruta).replace(/['"]+/g, "").trim();
+
+  // SI YA ES UNA URL ABSOLUTA (como Cloudflare R2 o cualquier http/https), DEVUÉLVELA TAL CUAL
+  if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
+    return ruta;
   }
-  
-  // Solo si es una ruta local tradicional le anteponemos el servidor
+
+  // Si es una ruta relativa tradicional del servidor backend
   const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
   return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
 };
@@ -2363,96 +2365,99 @@ console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
             }}
           >
             {/* Mapeo de URLs / Base64 */}
-            {Array.isArray(fotosArray) &&
-              fotosArray.map((foto: any, index: number) => {
-                const urlFoto = obtenerUrlFoto(foto);
-                return (
-                  <div
-                    key={index}
-                    style={{
-                      position: "relative",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "8px",
-                      backgroundColor: "#f8fafc",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "6px",
-                    }}
-                  >
-                    <a
-                      href={urlFoto}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: "600",
-                        color: "#024885",
-                        textDecoration: "none",
-                        cursor: "pointer",
-                      }}
-                      className="link-evidencia-edicion"
-                    >
-                      Ver Foto N° {index + 1}
-                    </a>
+         
+              {/* Mapeo de URLs / Base64 en Edición */}
+{Array.isArray(fotosArray) &&
+  fotosArray.map((foto: any, index: number) => {
+    // CAMBIO CLAVE: Usamos la función robusta para limpiar y validar la URL de R2 o local
+    const urlFoto = obtenerUrlFoto(foto);
 
-                    {/* Preview Flotante */}
-                    <div
-                      className="tooltip-miniatura-edicion"
-                      style={{
-                        display: "none",
-                        position: "absolute",
-                        right: "40px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        padding: "4px",
-                        background: "#fff",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        zIndex: 100,
-                        width: "90px",
-                        height: "90px",
-                      }}
-                    >
-                      <img
-                        src={urlFoto}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: "4px",
-                        }}
-                        alt={`Preview ${index + 1}`}
-                      />
-                    </div>
+    return (
+      <div
+        key={index}
+        style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "8px",
+          backgroundColor: "#f8fafc",
+          border: "1px solid #cbd5e1",
+          borderRadius: "6px",
+        }}
+      >
+        <a
+          href={urlFoto}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: "12px",
+            fontWeight: "600",
+            color: "#024885",
+            textDecoration: "none",
+            cursor: "pointer",
+          }}
+          className="link-evidencia-edicion"
+        >
+          Ver Foto N° {index + 1}
+        </a>
 
-                    {/* Botón eliminar */}
-                    <button
-                      type="button"
-                      onClick={() => eliminarFoto(index)}
-                      style={{
-                        backgroundColor: "rgba(239,68,68,0.9)",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "50%",
-                        width: "22px",
-                        height: "22px",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: "bold",
-                      }}
-                      title="Eliminar foto"
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
+        {/* Preview Flotante */}
+        <div
+          className="tooltip-miniatura-edicion"
+          style={{
+            display: "none",
+            position: "absolute",
+            right: "40px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            padding: "4px",
+            background: "#fff",
+            border: "1px solid #cbd5e1",
+            borderRadius: "6px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            zIndex: 100,
+            width: "90px",
+            height: "90px",
+          }}
+        >
+          <img
+            src={urlFoto}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              borderRadius: "4px",
+            }}
+            alt={`Preview ${index + 1}`}
+          />
+        </div>
 
+        {/* Botón eliminar */}
+        <button
+          type="button"
+          onClick={() => eliminarFoto(index)}
+          style={{
+            backgroundColor: "rgba(239,68,68,0.9)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "50%",
+            width: "22px",
+            height: "22px",
+            fontSize: "12px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: "bold",
+          }}
+          title="Eliminar foto"
+        >
+          ×
+        </button>
+      </div>
+    );
+  })}
             {/* Botón agregar foto */}
             {fotosArray.length < 4 && (
               <button
