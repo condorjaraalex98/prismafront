@@ -75,22 +75,21 @@ export default function ReportesWebScreen() {
   const [totalMisRegistros, setTotalMisRegistros] = useState(0);
   const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
 const obtenerUrlFoto = (foto: any) => {
-  console.log("Foto cruda recibida:", foto); // <--- AÑADE ESTO
-  
   if (!foto) return "";
+  
+  // Extraemos el string de la foto de forma segura
   const ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
+  if (!ruta) return "";
   
-  console.log("Ruta extraída:", ruta); // <--- AÑADE ESTO
-  
-  if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
-    return ruta;
+  // SI LA RUTA YA ES UNA URL ABSOLUTA (como la de Cloudflare R2 o http), devuélvela DIRECTAMENTE sin pegarle nada adelante
+  if (ruta.includes("http://") || ruta.includes("https://") || ruta.startsWith("data:image")) {
+    // Limpiamos posibles espacios o corchetes sobrantes si los hubiera
+    return ruta.replace(/['"]+/g, "").trim();
   }
   
+  // Solo si es una ruta local tradicional le anteponemos el servidor
   const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
-  const urlFinal = `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
-  
-  console.log("URL final generada:", urlFinal); // <--- AÑADE ESTO
-  return urlFinal;
+  return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
 };
   // Función de redirección de ejemplo (puedes llamarla desde cualquier botón o evento)
   const cambiarDePagina = (rutaDestino: string) => {
