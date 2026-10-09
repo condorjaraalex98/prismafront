@@ -1574,18 +1574,21 @@ console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
              
               </div>
  {/* EVIDENCIAS FOTOGRÁFICAS */}
-           {(() => {
+       {(() => {
   let fotosArray: any[] = [];
   try {
     const itemData = detalleSeleccionado as any;
-    const fotosVal = itemData.fotos_json;
+    const fotosVal = itemData.fotos_json || itemData.lista_fotos || itemData.fotos;
+    
     if (fotosVal) {
       const parsed = typeof fotosVal === "string" ? JSON.parse(fotosVal) : fotosVal;
       if (Array.isArray(parsed)) {
-        fotosArray = parsed.filter((f) => f && f !== "null");
+        fotosArray = parsed.filter((f) => f && f !== "null" && f !== "");
       }
-    } else {
-      fotosArray = itemData.lista_fotos || itemData.fotos || (itemData.foto_principal ? [itemData.foto_principal] : []);
+    } 
+    
+    if (fotosArray.length === 0 && itemData.foto_principal) {
+      fotosArray = [itemData.foto_principal];
     }
   } catch (e) {
     fotosArray = [];
@@ -1607,7 +1610,7 @@ console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
           }}
         >
           {fotosArray.map((foto: any, idx: number) => {
-            const urlFotoFinal = obtenerUrlFoto(foto); // <--- Usamos tu función para limpiar la URL (sea R2 o local)
+            const urlFotoFinal = obtenerUrlFoto(foto);
 
             return (
               <div
@@ -1617,7 +1620,7 @@ console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
                   display: "inline-block",
                 }}
               >
-                {/* Enlace que al hacer clic abre la foto original completa */}
+                {/* Enlace que al hacer clic abre la foto original completa en Cloudflare R2 */}
                 <a
                   href={urlFotoFinal}
                   target="_blank"
@@ -1641,7 +1644,7 @@ console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
                   <span>📷 Ver Foto {idx + 1}</span>
                 </a>
 
-                {/* Miniatura flotante al pasar el mouse (Aquí estaba faltando) */}
+                {/* Miniatura flotante al pasar el mouse */}
                 <div
                   className="tooltip-miniatura"
                   style={{
