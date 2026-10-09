@@ -80,13 +80,35 @@ const obtenerUrlFoto = (foto: any) => {
   let ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
   if (!ruta) return "";
 
-  // 🔥 ESTA LÍNEA ES LA QUE BORRA LOS CORCHETES Y COMILLAS:
+  // 1. Limpiamos corchetes, comillas y espacios
   ruta = String(ruta).replace(/[\[\]'"]+/g, "").trim();
 
+  // 2. CORRECCIÓN DE DUPLICACIÓN: Si la URL de R2 aparece repetida en el mismo string, nos quedamos solo con la primera ocurrencia
+  const r2Domain = "pub-bce5ad6110584baca6912e8944cd2051.r2.dev";
+  const firstIndex = ruta.indexOf(r2Domain);
+  if (firstIndex !== -1) {
+    // Buscamos el inicio del protocolo http/https antes del dominio o reconstruimos desde el dominio
+    const protocolIndex = ruta.lastIndexOf("http", firstIndex);
+    const startIndex = protocolIndex !== -1 ? protocolIndex : firstIndex;
+    
+    // Cortamos justo después de la extensión .jpg / .png / .jpeg si se llega a repetir
+    const cleanSub = ruta.slice(startIndex);
+    const matchExt = cleanSub.match(/^(https?:\/\/[^\s\)]+?\.(jpg|jpeg|png|webp|gif))/i);
+    if (matchExt && matchExt[1]) {
+      ruta = matchExt[1];
+    } else {
+      // Fallback si no encuentra la extensión exacta, cortamos en el primer espacio o duplicación del dominio
+      const secondIndex = cleanSub.indexOf(r2Domain, r2Domain.length);
+      ruta = secondIndex !== -1 ? cleanSub.slice(0, secondIndex) : cleanSub;
+    }
+  }
+
+  // 3. Si ya es una URL absoluta limpia, devuélvela tal cual
   if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
     return ruta;
   }
 
+  // 4. Si es una ruta relativa tradicional
   const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
   return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
 };
