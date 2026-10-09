@@ -77,19 +77,16 @@ export default function ReportesWebScreen() {
 const obtenerUrlFoto = (foto: any) => {
   if (!foto) return "";
 
-  // Extraemos el texto de la foto
   let ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
   if (!ruta) return "";
 
-  // Limpiamos comillas extra o corchetes por si acaso
-  ruta = String(ruta).replace(/['"]+/g, "").trim();
+  // 🔥 ESTA LÍNEA ES LA QUE BORRA LOS CORCHETES Y COMILLAS:
+  ruta = String(ruta).replace(/[\[\]'"]+/g, "").trim();
 
-  // SI YA ES UNA URL ABSOLUTA (como Cloudflare R2 o cualquier http/https), DEVUÉLVELA TAL CUAL
   if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
     return ruta;
   }
 
-  // Si es una ruta relativa tradicional del servidor backend
   const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
   return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
 };
@@ -1574,21 +1571,26 @@ console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
              
               </div>
  {/* EVIDENCIAS FOTOGRÁFICAS */}
-       {(() => {
+     {(() => {
   let fotosArray: any[] = [];
   try {
     const itemData = detalleSeleccionado as any;
     const fotosVal = itemData.fotos_json || itemData.lista_fotos || itemData.fotos;
     
     if (fotosVal) {
+      // Si viene como string, lo parseamos; si ya es array, lo usamos
       const parsed = typeof fotosVal === "string" ? JSON.parse(fotosVal) : fotosVal;
+      
       if (Array.isArray(parsed)) {
-        fotosArray = parsed.filter((f) => f && f !== "null" && f !== "");
+        // Aplanamos por si viene un array dentro de otro array y limpiamos cada ruta
+        fotosArray = parsed.flat(Infinity)
+                          .map(f => typeof f === "string" ? f.replace(/[\[\]'"]+/g, "").trim() : f)
+                          .filter((f) => f && f !== "null" && f !== "");
       }
     } 
     
     if (fotosArray.length === 0 && itemData.foto_principal) {
-      fotosArray = [itemData.foto_principal];
+      fotosArray = [String(itemData.foto_principal).replace(/[\[\]'"]+/g, "").trim()];
     }
   } catch (e) {
     fotosArray = [];
