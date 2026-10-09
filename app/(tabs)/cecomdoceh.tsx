@@ -75,15 +75,15 @@ export default function ReportesWebScreen() {
   const [totalMisRegistros, setTotalMisRegistros] = useState(0);
   const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
 const obtenerUrlFoto = (foto: any) => {
-  const ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || "");
+  if (!foto) return "";
+  const ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
   if (!ruta) return "";
   
-  // Si ya es una URL completa (Cloudflare R2, externa, o Base64), la respetamos
+  // Si ya es una URL completa (como Cloudflare R2 o Base64), la retorna intacta
   if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
     return ruta;
   }
   
-  // Si es una ruta relativa del servidor, le anteponemos la URL activa de producción o desarrollo
   const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
   return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
 };
@@ -1568,134 +1568,123 @@ const handleGuardarCambios = async () => {
              
               </div>
  {/* EVIDENCIAS FOTOGRÁFICAS */}
-              {(() => {
-                let fotosArray: any[] = [];
-                try {
-                  const itemData = detalleSeleccionado as any;
-                  const fotosVal = itemData.fotos_json;
-                  fotosArray = fotosVal
-                    ? typeof fotosVal === "string"
-                      ? JSON.parse(fotosVal)
-                      : fotosVal
-                    : itemData.lista_fotos ||
-                      itemData.fotos ||
-                      [
-                        itemData.foto_1,
-                        itemData.foto_2,
-                        itemData.foto_3,
-                        itemData.foto_4,
-                      ].filter(Boolean);
-                } catch (e) {
-                  fotosArray = [
-                    detalleSeleccionado.foto_1,
-                    detalleSeleccionado.foto_2,
-                    detalleSeleccionado.foto_3,
-                    detalleSeleccionado.foto_4,
-                  ].filter(Boolean);
-                }
+           {(() => {
+  let fotosArray: any[] = [];
+  try {
+    const itemData = detalleSeleccionado as any;
+    const fotosVal = itemData.fotos_json;
+    if (fotosVal) {
+      const parsed = typeof fotosVal === "string" ? JSON.parse(fotosVal) : fotosVal;
+      if (Array.isArray(parsed)) {
+        fotosArray = parsed.filter((f) => f && f !== "null");
+      }
+    } else {
+      fotosArray = itemData.lista_fotos || itemData.fotos || (itemData.foto_principal ? [itemData.foto_principal] : []);
+    }
+  } catch (e) {
+    fotosArray = [];
+  }
 
-                if (Array.isArray(fotosArray) && fotosArray.length > 0) {
-                  return (
-                    <div style={{ marginTop: "16px" }}>
-                      <strong style={styles.sectionTitle}>
-                        Evidencias Adjuntas ({fotosArray.length}):
-                      </strong>
+  if (Array.isArray(fotosArray) && fotosArray.length > 0) {
+    return (
+      <div style={{ marginTop: "16px" }}>
+        <strong style={styles.sectionTitle}>
+          Evidencias Adjuntas ({fotosArray.length}):
+        </strong>
 
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: "8px",
-                          marginTop: "8px",
-                        }}
-                      >
-                        {fotosArray.map((foto: any, idx: number) => {
-                          const urlFoto =
-                            typeof foto === "string"
-                              ? foto
-                              : foto?.url_imagen || foto?.url || "";
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginTop: "8px",
+          }}
+        >
+          {fotosArray.map((foto: any, idx: number) => {
+            const urlFotoFinal = obtenerUrlFoto(foto); // <--- Usamos tu función para limpiar la URL (sea R2 o local)
 
-                          if (!urlFoto) return null;
+            return (
+              <div
+                key={idx}
+                style={{
+                  position: "relative",
+                  display: "inline-block",
+                }}
+              >
+                {/* Enlace que al hacer clic abre la foto original completa */}
+                <a
+                  href={urlFotoFinal}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 12px",
+                    backgroundColor: "#f1f5f9",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    color: "#024885",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    textDecoration: "none",
+                    cursor: "pointer",
+                  }}
+                  className="link-evidencia-foto"
+                >
+                  <span>📷 Ver Foto {idx + 1}</span>
+                </a>
 
-                          return (
-                            <div
-                              key={idx}
-                              style={{
-                                position: "relative",
-                                display: "inline-block",
-                              }}
-                            >
-                              <a
-                                href={urlFoto}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                  padding: "6px 12px",
-                                  backgroundColor: "#f1f5f9",
-                                  border: "1px solid #cbd5e1",
-                                  borderRadius: "6px",
-                                  color: "#024885",
-                                  fontSize: "12px",
-                                  fontWeight: "600",
-                                  textDecoration: "none",
-                                  cursor: "pointer",
-                                }}
-                                className="link-evidencia-foto"
-                              >
-                                <span>📷 Ver Foto {idx + 1}</span>
-                              </a>
+                {/* Miniatura flotante al pasar el mouse (Aquí estaba faltando) */}
+                <div
+                  className="tooltip-miniatura"
+                  style={{
+                    display: "none",
+                    position: "absolute",
+                    bottom: "105%",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    padding: "4px",
+                    background: "#fff",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    zIndex: 100,
+                    width: "130px",
+                    height: "130px",
+                  }}
+                >
+                  <img
+                    src={urlFotoFinal}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      borderRadius: "4px",
+                    }}
+                    alt={`Preview ${idx + 1}`}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-                              <div
-                                className="tooltip-miniatura"
-                                style={{
-                                  display: "none",
-                                  position: "absolute",
-                                  bottom: "105%",
-                                  left: "50%",
-                                  transform: "translateX(-50%)",
-                                  padding: "4px",
-                                  background: "#fff",
-                                  border: "1px solid #cbd5e1",
-                                  borderRadius: "6px",
-                                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                                  zIndex: 100,
-                                  width: "130px",
-                                  height: "130px",
-                                }}
-                              >
-                                <img
-                                  src={urlFoto}
-                                  style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
-                                    borderRadius: "4px",
-                                  }}
-                                  alt={`Preview ${idx + 1}`}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <style>{`
-                  .link-evidencia-foto:hover {
-                    background-color: #e2e8f0 !important;
-                  }
-                  .link-evidencia-foto:hover + .tooltip-miniatura,
-                  .tooltip-miniatura:hover {
-                    display: block !important;
-                  }
-                `}</style>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+        {/* Estilo para activar el hover de la miniatura */}
+        <style>{`
+          .link-evidencia-foto:hover {
+            background-color: #e2e8f0 !important;
+          }
+          .link-evidencia-foto:hover + .tooltip-miniatura,
+          .tooltip-miniatura:hover {
+            display: block !important;
+          }
+        `}</style>
+      </div>
+    );
+  }
+  return null;
+})()}
               {/* DESCRIPCIÓN / SUCESO */}
               <div style={{ marginTop: "16px" }}>
                 <strong style={styles.sectionTitle}>
