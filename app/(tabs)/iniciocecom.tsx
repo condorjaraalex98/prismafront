@@ -540,7 +540,7 @@ const seleccionarGaleria = async () => {
         .map((f) => f.url_remota)
         .filter((url): url is string => url !== null);
 
-      const res = await fetch(`${API_URL}/api/vehiculo/iniciar-servicio-checkcompleto123`, {
+      const res = await fetch(`${API_URL}/api/vehiculo/iniciar-servicio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 
 // Hook de autenticación global
 import { useAuth } from "../../context/userContext";
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "${API_URL}";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
 const MJM_BLUE = "#024885";
 interface CatalogoItem {
   value: number | string;
@@ -176,10 +176,10 @@ export default function ReportesWebScreen() {
     { id: 1, nombre: "SI" },
     { id: 2, nombre: "NO" },
   ];
-  const fetchLugares = async () => {
+const fetchLugares = async () => {
     try {
       const response = await fetch(
-        "${API_URL}/catalogos/modalidad",
+        `${API_URL}/catalogos/modalidad`, // 👈 Usa backticks (``) en lugar de comillas dobles ("")
       );
       const data = await response.json();
       setListaUbicaciones(data);
@@ -312,10 +312,10 @@ export default function ReportesWebScreen() {
   const [dropdownEstadosOpen, setDropdownEstadosOpen] = useState(false);
 
   // OBTENCIÓN DE DATOS DESDE LA API
-  const fetchOcurrencias = useCallback(async () => {
+const fetchOcurrencias = useCallback(async () => {
     try {
       const response = await fetch(
-        "${API_URL}/ocurrencias/listar/exportarformato",
+        `${API_URL}/ocurrencias/listar/exportarformato`, // 👈 Cambiar a backticks (``)
       );
       const data = await response.json();
       setReportesCompletos(data || []);
