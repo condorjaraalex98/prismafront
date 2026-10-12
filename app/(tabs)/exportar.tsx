@@ -1,11 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Dropdown } from "react-native-element-dropdown";
-import * as XLSX from "xlsx";
-// CONFIGURACIÓN DE TIPOS E IMPORTACIÓN PARA EXPORTAR PDF
-
-// Hook de autenticación global
 import { useAuth } from "../../context/userContext";
+import { Dropdown } from "react-native-element-dropdown";
 export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
 const MJM_BLUE = "#024885";
 interface CatalogoItem {
@@ -125,6 +121,7 @@ export interface Ocurrencia {
   resultado_nombre?: string;
   relacion_nombre?: string;
 }
+
 const listaEstados = [
   { id: 1, nombre: "PENDIENTE" },
   { id: 2, nombre: "VERIFICADO" },
@@ -138,55 +135,64 @@ const listaArrestos = [
 ];
 export default function ReportesWebScreen() {
   const { userData } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState("Actualizando...");
-  const [isFinished, setIsFinished] = useState(false);
-  const [registroEditar, setRegistroEditar] = useState<Ocurrencia | null>(null);
-  const [modalInsertOpen, setModalInsertOpen] = useState<string | null>(null);
-  const [detallesSeleccionado, setDetallesSeleccionado] =
-    useState<Ocurrencia | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [reportesCompletos, setReportesCompletos] = useState<any[]>([]);
+  const [conteosPorEstado, setConteosPorEstado] = useState<Record<string, number>>({});
+  const [esBusqueda12Horas, setEsBusqueda12Horas] = useState(true);
   const [modalConfirmacionOpen, setModalConfirmacionOpen] = useState(false);
-  const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
-  const [cargandoExcel, setCargandoExcel] = useState(false);
-  // 2. DECLARA LOS ESTADOS DE LAS 5 LISTAS (Faltaban en tu componente)
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [registrosPorPagina, setRegistrosPorPagina] = useState(25);
+  const [totalRegistrosBD, setTotalRegistrosBD] = useState(0);
+
+  // Fecha de hoy local para bloquear la selección de fechas futuras
+  const hoy = new Date();
+  const anio = hoy.getFullYear();
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dia = String(hoy.getDate()).padStart(2, '0');
+  const fechaHoy = `${anio}-${mes}-${dia}`;
+
+  // Modales
+  const [detalleSeleccionado, setDetalleSeleccionado] = useState<any | null>(null);
+  const [registroEditar, setRegistroEditar] = useState<any | null>(null);
+const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
+  // Estados del formulario de filtros
+  const [fechaReporteInicio, setFechaReporteInicio] = useState("");
+  const [fechaReporteFin, setFechaReporteFin] = useState("");
+  const [fechaEventoInicio, setFechaEventoInicio] = useState("");
+  const [fechaEventoFin, setFechaEventoFin] = useState("");
+  const [patrimonioFiltro, setPatrimonioFiltro] = useState("");
+  const [arrestoFiltro, setArrestoFiltro] = useState("");
+  const [soloRoboHurto, setSoloRoboHurto] = useState(false);
   const [listaMedios, setListaMedios] = useState<CatalogoItem[]>([]);
-  const [listaUbisipcop, setListaUbisipcop] = useState<CatalogoItem[]>([]);
-  const [listaConsecuencias, setListaConsecuencias] = useState<CatalogoItem[]>(
-    [],
-  );
-
-  // Función para abrir el modal de edición y cargar los catálogos del registro
-  const abrirModalEditar = (registro: Ocurrencia) => {
-    setRegistroEditar(registro);
-    // Convierte el ID a string para que coincida con el tipo que espera la función
-    fetchCamposIpcop(String(registro.id_ocurrencia));
-  };
-  const [listaResultados, setListaResultados] = useState<CatalogoItem[]>([]);
-  const [listaRelaciones, setListaRelaciones] = useState<CatalogoItem[]>([]);
-
-  // 3. DECLARA LOS ESTADOS DE LOS VALORES SELECCIONADOS (Para cuando edites)
-  const [medioSeleccionado, setMedioSeleccionado] = useState<any>(null);
-  const [lugarSeleccionado, setLugarSeleccionado] = useState<any>(null);
-  const [consecuenciaSeleccionada, setConecuenciaSeleccionada] =
-    useState<any>(null);
-  const [resultadoSeleccionado, setResultadoSeleccionado] = useState<any>(null);
-  const [relacionSeleccionada, setRelacionSeleccionada] = useState<any>(null);
-  const listaPatrimonio = [
+    const [listaUbisipcop, setListaUbisipcop] = useState<CatalogoItem[]>([]);
+    const [listaConsecuencias, setListaConsecuencias] = useState<CatalogoItem[]>(
+      [],
+    );
+    const [listaResultados, setListaResultados] = useState<CatalogoItem[]>([]);
+      const [listaRelaciones, setListaRelaciones] = useState<CatalogoItem[]>([]);
+    
+  const [modalidadesSeleccionadas, setModalidadesSeleccionadas] = useState<string[]>([]);
+  const [estadosSeleccionados, setEstadosSeleccionados] = useState<string[]>([]);
+  const [dropdownModalidadesOpen, setDropdownModalidadesOpen] = useState(false);
+  const [dropdownEstadosOpen, setDropdownEstadosOpen] = useState(false);
+   const listaPatrimonio = [
     { id: 1, nombre: "SI" },
     { id: 2, nombre: "NO" },
   ];
-const fetchLugares = async () => {
-    try {
-      const response = await fetch(
-        `${API_URL}/catalogos/modalidad`, // 👈 Usa backticks (``) en lugar de comillas dobles ("")
-      );
-      const data = await response.json();
-      setListaUbicaciones(data);
-    } catch (error) {
-      console.error("Error al cargar modalidades:", error);
-    }
-  };
+  const fetchLugares = async () => {
+      try {
+        const response = await fetch(
+          `${API_URL}/catalogos/modalidad`, // 👈 Cambiado a backticks (``)
+        );
+        const data = await response.json();
+        setListaUbicaciones(data);
+      } catch (error) {
+        console.error("Error al cargar modalidades:", error);
+      }
+    };
   const fetchCamposIpcop = async (idOcurrencia?: string) => {
     try {
       const url = idOcurrencia
@@ -206,1024 +212,437 @@ const fetchLugares = async () => {
       // 2. Si estás editando y el backend te devuelve el registro actual,
       // fusionarlo con 'registroEditar' para que los selects reconozcan el valor seleccionado
       if (idOcurrencia && data.registro) {
-        setRegistroEditar((prev) => ({
-          ...(prev || {}),
-          ...data.registro,
-        }));
-      }
+  setRegistroEditar((prev: any) => {
+    const registroFusionado = { ...(prev || {}), ...data.registro };
+    const tieneInv = (registroFusionado.victimas?.length || 0) > 0 || (registroFusionado.agresores?.length || 0) > 0;
+    
+    return {
+      ...registroFusionado,
+      identificado: registroFusionado.identificado || (tieneInv ? "IDENTIFICADO" : "NO_IDENTIFICADO")
+    };
+  });
+}
     } catch (error) {
       console.error("Error al cargar los campos sIPCOP:", error);
     }
   };
-
-  // ESTADOS PRINCIPALES
-  const [reportesCompletos, setReportesCompletos] = useState<Ocurrencia[]>([]);
-  const [filtro, setFiltro] = useState<"TODOS" | "MIOS">("TODOS");
-  const [paginaActual, setPaginaActual] = useState(1);
-  const [registrosPorPagina, setRegistrosPorPagina] = useState(25);
-  const [detalleSeleccionado, setDetalleSeleccionado] =
-    useState<Ocurrencia | null>(null);
-  useEffect(() => {
-    fetchLugares();
-  }, []);
-  // NUEVOS ESTADOS DE FILTRADO (FECHAS Y MODALIDA
   const handleGuardarCambios = async () => {
-    if (!registroEditar) return;
+     if (!registroEditar) return;
+ 
+     setLoading(true);
+     setUploadProgress(0);
+     setUploadStatus("Actualizando...");
+     setIsFinished(false);
+ 
+     const interval = setInterval(
+       () => setUploadProgress((p) => (p < 90 ? p + 10 : p)),
+       100,
+     );
+ 
+     try {
+       const response = await fetch(
+         `${API_URL}/ocurrencias/editarseguro-sipcop/${registroEditar.id_ocurrencia}`,
+         {
+           method: "PUT",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({
+             // CAMPOS MAPEADOS CON LOS NOMBRES QUE ESPERA EL BACKEND (_real)
+             id_modalidad: registroEditar.id_modalidad,
+             id_resultado_real: registroEditar.id_resultado,
+             id_consecuencia_real: registroEditar.id_consecuencia,
+             id_lugar_real: registroEditar.id_lugarsip,
+             id_medio_real: registroEditar.id_medio,
+ 
+             // OTROS CAMPOS QUE PUEDAS NECESITAR ACTUALIZAR
+             fecha_evento: registroEditar.fecha_evento,
+             hora_alerta: registroEditar.hora_alerta,
+             hora_llegada: registroEditar.hora_llegada,
+             hora_repliegue: registroEditar.hora_repliegue,
+             referencia: registroEditar.referencia,
+ 
+             // 👇👇 TRES CAMPOS NUEVOS AGREGADOS AQUÍ 👇👇
+             estado: registroEditar.estado,
+             patrimonio_real: registroEditar.patrimonio_real,
+             arresto_ciudadano: registroEditar.arresto_ciudadano,
+             // 👆👆 --------------------------------- 👆👆
+ 
+             // ARREGLOS DINÁMICOS PARA LAS TABLAS DE DETALLES
+             victimas: registroEditar.victimas || [],
+             agresores: registroEditar.agresores || [],
+           }),
+         },
+       );
+ 
+       const data = await response.json();
+       clearInterval(interval);
+ 
+       if (data.success) {
+         setUploadProgress(100);
+         setUploadStatus("¡Correcto!");
+         setIsFinished(true);
+ 
+         setTimeout(() => {
+           setLoading(false);
+           setRegistroEditar(null);
+           fetchOcurrencias();
+         }, 600);
+       } else {
+         setLoading(false);
+         alert("Error del servidor: " + (data.error || "No se pudo actualizar"));
+       }
+     } catch (error) {
+       clearInterval(interval);
+       setLoading(false);
+       console.error("Error de conexión:", error);
+       alert("No se pudo conectar con el servidor. Verifica la IP.");
+     }
+   };
+  // Filtros aplicados efectivamente
+  const [filtrosAplicados, setFiltrosAplicados] = useState({
+    fechaReporteInicio: "",
+    fechaReporteFin: "",
+    fechaEventoInicio: "",
+    fechaEventoFin: "",
+    patrimonio: "",
+    arresto: "",
+    roboHurto: false,
+    modalidades: [] as string[],
+    estados: [] as string[]
+  });
 
+  const [listaModalidadesDisponibles, setListaModalidadesDisponibles] = useState<string[]>([]);
+  const listaEstadosDisponibles = ["PENDIENTE", "VERIFICADO", "SIPCOP", "ANULADO"];
+
+  // Validadores clave para habilitar/deshabilitar controles
+  const tieneFechasSeleccionadas = useMemo(() => {
+    const hayFechasReporte = Boolean(fechaReporteInicio && fechaReporteFin);
+    const hayFechasEvento = Boolean(fechaEventoInicio && fechaEventoFin);
+    return hayFechasReporte || hayFechasEvento;
+  }, [fechaReporteInicio, fechaReporteFin, fechaEventoInicio, fechaEventoFin]);
+
+  // Formateador visual a DD/MM/YYYY
+  const formatearFechaDDMMYYYY = (fechaStr: string) => {
+    if (!fechaStr) return "";
+    const parteFecha = String(fechaStr).split(" ")[0].split("T")[0];
+    const partes = parteFecha.split("-");
+    if (partes.length === 3) {
+      const [anio, mes, dia] = partes;
+      return `${dia}/${mes}/${anio}`;
+    }
+    return fechaStr;
+  };
+
+  useEffect(() => {
+    fetch(`${API_URL}/catalogos/modalidad`)
+      .then((res) => res.json())
+      .then((data) => {
+        const lista = Array.isArray(data) ? data : data.data || [];
+        setListaModalidadesDisponibles(lista.map((m: any) => m.nombre || m.label).filter(Boolean));
+      })
+      .catch((err) => console.error("Error al cargar modalidades:", err));
+  }, []);
+
+
+
+
+  
+  const fetchOcurrencias = useCallback(async () => {
     setLoading(true);
-    setUploadProgress(0);
-    setUploadStatus("Actualizando...");
-    setIsFinished(false);
-
-    const interval = setInterval(
-      () => setUploadProgress((p) => (p < 90 ? p + 10 : p)),
-      100,
-    );
-
     try {
-      const response = await fetch(
-        `${API_URL}/ocurrencias/editarseguro-sipcop/${registroEditar.id_ocurrencia}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            // CAMPOS MAPEADOS CON LOS NOMBRES QUE ESPERA EL BACKEND (_real)
-            id_modalidad: registroEditar.id_modalidad,
-            id_resultado_real: registroEditar.id_resultado,
-            id_consecuencia_real: registroEditar.id_consecuencia,
-            id_lugar_real: registroEditar.id_lugarsip,
-            id_medio_real: registroEditar.id_medio,
+      let url = `${API_URL}/ocurrencias/listar/tablasipcop-avanzado?page=${paginaActual}&limit=${registrosPorPagina}`;
 
-            // OTROS CAMPOS QUE PUEDAS NECESITAR ACTUALIZAR
-            fecha_evento: registroEditar.fecha_evento,
-            hora_alerta: registroEditar.hora_alerta,
-            hora_llegada: registroEditar.hora_llegada,
-            hora_repliegue: registroEditar.hora_repliegue,
-            referencia: registroEditar.referencia,
+      if (filtrosAplicados.fechaReporteInicio) url += `&fecha_reporte_inicio=${encodeURIComponent(filtrosAplicados.fechaReporteInicio)}`;
+      if (filtrosAplicados.fechaReporteFin) url += `&fecha_reporte_fin=${encodeURIComponent(filtrosAplicados.fechaReporteFin)}`;
+      if (filtrosAplicados.fechaEventoInicio) url += `&fecha_evento_inicio=${encodeURIComponent(filtrosAplicados.fechaEventoInicio)}`;
+      if (filtrosAplicados.fechaEventoFin) url += `&fecha_evento_fin=${encodeURIComponent(filtrosAplicados.fechaEventoFin)}`;
+      if (filtrosAplicados.patrimonio) url += `&patrimonio=${encodeURIComponent(filtrosAplicados.patrimonio)}`;
+      if (filtrosAplicados.arresto) url += `&arresto=${encodeURIComponent(filtrosAplicados.arresto)}`;
+      if (filtrosAplicados.roboHurto) url += `&delito=robo_hurto`;
+      
+      if (filtrosAplicados.modalidades.length > 0) {
+        url += `&modalidades=${encodeURIComponent(filtrosAplicados.modalidades.join(","))}`;
+      }
+      if (filtrosAplicados.estados.length > 0) {
+        url += `&estados=${encodeURIComponent(filtrosAplicados.estados.join(","))}`;
+      }
 
-            // 👇👇 TRES CAMPOS NUEVOS AGREGADOS AQUÍ 👇👇
-            estado: registroEditar.estado,
-            patrimonio_real: registroEditar.patrimonio_real,
-            arresto_ciudadano: registroEditar.arresto_ciudadano,
-            // 👆👆 --------------------------------- 👆👆
+      const response = await fetch(url);
+      const json = await response.json();
 
-            // ARREGLOS DINÁMICOS PARA LAS TABLAS DE DETALLES
-            victimas: registroEditar.victimas || [],
-            agresores: registroEditar.agresores || [],
-          }),
-        },
-      );
-
-      const data = await response.json();
-      clearInterval(interval);
-
-      if (data.success) {
-        setUploadProgress(100);
-        setUploadStatus("¡Correcto!");
-        setIsFinished(true);
-
-        setTimeout(() => {
-          setLoading(false);
-          setRegistroEditar(null);
-          fetchOcurrencias();
-        }, 600);
+      if (json && json.success) {
+        setReportesCompletos(json.data || []);
+        setTotalRegistrosBD(json.total || 0);
+        setConteosPorEstado(json.conteosPorEstado || {});
+        setEsBusqueda12Horas(Boolean(json.es12Horas));
       } else {
-        setLoading(false);
-        alert("Error del servidor: " + (data.error || "No se pudo actualizar"));
+        setReportesCompletos([]);
+        setTotalRegistrosBD(0);
+        setConteosPorEstado({});
+        setEsBusqueda12Horas(false);
       }
     } catch (error) {
-      clearInterval(interval);
+      console.error("Error al obtener registros:", error);
+      setReportesCompletos([]);
+      setTotalRegistrosBD(0);
+    } finally {
       setLoading(false);
-      console.error("Error de conexión:", error);
-      alert("No se pudo conectar con el servidor. Verifica la IP.");
     }
-  };
-  const [fechaInicio, setFechaInicio] = useState("");
-  const [fechaFin, setFechaFin] = useState("");
-  const [fechaReporteInicio, setFechaReporteInicio] = useState(""); // Nuevo
-  const [fechaReporteFin, setFechaReporteFin] = useState("");
-  const [modalidadesSeleccionadas, setModalidadesSeleccionadas] = useState<
-    string[]
-  >([]);
-  const [estadosSeleccionados, setEstadosSeleccionados] = useState<string[]>(
-    [],
-  );
-  const [dropdownModalidadesOpen, setDropdownModalidadesOpen] = useState(false);
-  const [dropdownEstadosOpen, setDropdownEstadosOpen] = useState(false);
-
-  // OBTENCIÓN DE DATOS DESDE LA API
-const fetchOcurrencias = useCallback(async () => {
-    try {
-      const response = await fetch(
-        `${API_URL}/ocurrencias/listar/exportarformato`, // 👈 Cambiar a backticks (``)
-      );
-      const data = await response.json();
-      setReportesCompletos(data || []);
-    } catch (error) {
-      console.error("Error al obtener datos operativos:", error);
-    }
-  }, []);
+  }, [paginaActual, registrosPorPagina, filtrosAplicados]);
 
   useEffect(() => {
     fetchOcurrencias();
   }, [fetchOcurrencias]);
 
-  // INYECTAR HOVER Y CERRAR DROPDOWN AL HACER CLIC FUERA
   useEffect(() => {
-    const estiloHover = document.createElement("style");
-    estiloHover.innerText = `
-      .fila-tabla-operativa:hover {
-        background-color: #f1f5f9 !important;
-        transition: background-color 0.15s ease-in-out;
-      }
-    `;
-    document.head.appendChild(estiloHover);
-
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (!target.closest("#dropdown-modalidades-container")) {
-        setDropdownModalidadesOpen(false);
-      }
+      if (!target.closest("#dropdown-modalidades-container")) setDropdownModalidadesOpen(false);
+      if (!target.closest("#dropdown-estados-container")) setDropdownEstadosOpen(false);
     };
     window.addEventListener("click", handleClickOutside);
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setDetalleSeleccionado(null);
-        setDropdownModalidadesOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.head.removeChild(estiloHover);
-      window.removeEventListener("click", handleClickOutside);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => window.removeEventListener("click", handleClickOutside);
   }, []);
 
-  const handleCambioFiltro = (nuevoFiltro: "TODOS" | "MIOS") => {
-    setFiltro(nuevoFiltro);
-    setPaginaActual(1);
-  };
+  const totalPaginas = useMemo(() => {
+    const paginas = Math.ceil(totalRegistrosBD / registrosPorPagina);
+    return paginas > 0 ? paginas : 1;
+  }, [totalRegistrosBD, registrosPorPagina]);
 
-  // OBTENER LISTA ÚNICA DE MODALIDADES
-  const listaModalidadesDisponibles = useMemo(() => {
-    const mods = reportesCompletos
-      .map((item) => item.modalidad_nombre)
-      .filter(Boolean);
-    return Array.from(new Set(mods)) as string[];
-  }, [reportesCompletos]);
-  const listaEstadosDisponibles = useMemo(() => {
-    const estados = reportesCompletos
-      .map((item) => item.estado)
-      .filter(Boolean);
-    return Array.from(new Set(estados)) as string[];
-  }, [reportesCompletos]);
   const toggleModalidadFiltro = (mod: string) => {
     setModalidadesSeleccionadas((prev) =>
-      prev.includes(mod) ? prev.filter((m) => m !== mod) : [...prev, mod],
+      prev.includes(mod) ? prev.filter((m) => m !== mod) : [...prev, mod]
     );
-    setPaginaActual(1);
   };
-  const toggleEstadoFiltro = (estado: string) => {
+
+  const toggleEstadoFiltro = (est: string) => {
     setEstadosSeleccionados((prev) =>
-      prev.includes(estado)
-        ? prev.filter((e) => e !== estado)
-        : [...prev, estado],
+      prev.includes(est) ? prev.filter((e) => e !== est) : [...prev, est]
     );
-    setDropdownEstadosOpen(false);
+  };
+
+  const handleEjecutarBusqueda = () => {
+    if (!tieneFechasSeleccionadas) return;
     setPaginaActual(1);
-  };
-  // FORMATEADORES DE FECHAS
-  const formatearFechaConDia = (fechaStr: string) => {
-    if (!fechaStr) return "S/F";
-    const fechaLimpia = String(fechaStr).includes("-")
-      ? String(fechaStr).replace(/-/g, "/")
-      : fechaStr;
-    const fechaObjReal = new Date(fechaLimpia);
-    if (isNaN(fechaObjReal.getTime())) return fechaStr;
-
-    const diaSemana = fechaObjReal
-      .toLocaleDateString("es-PE", { weekday: "short" })
-      .replace(".", "")
-      .toLowerCase();
-    const fechaNumerica = fechaObjReal.toLocaleDateString("es-PE");
-    return `${diaSemana} ${fechaNumerica}`;
-  };
-
-  const extraerFechaYHoraLimpia = (fechaIsoStr: string) => {
-    if (!fechaIsoStr) return { dia: "S/D", fecha: "S/F", hora: "S/H" };
-    const formateada = new Date(fechaIsoStr);
-    if (isNaN(formateada.getTime()))
-      return { dia: "S/D", fecha: fechaIsoStr, hora: "S/H" };
-
-    const dia = formateada
-      .toLocaleDateString("es-PE", { weekday: "short" })
-      .replace(".", "")
-      .toLowerCase();
-    const fecha = formateada.toLocaleDateString("es-PE");
-    const hora = formateada.toLocaleTimeString("es-PE", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
+    setFiltrosAplicados({
+      fechaReporteInicio: fechaReporteInicio.trim(),
+      fechaReporteFin: fechaReporteFin.trim(),
+      fechaEventoInicio: fechaEventoInicio.trim(),
+      fechaEventoFin: fechaEventoFin.trim(),
+      patrimonio: patrimonioFiltro.trim(),
+      arresto: arrestoFiltro.trim(),
+      roboHurto: soloRoboHurto,
+      modalidades: [...modalidadesSeleccionadas],
+      estados: [...estadosSeleccionados]
     });
-
-    return { dia, fecha, hora };
   };
 
-  // LÓGICA DE FILTRADO (ESTRICTAMENTE USANDO fecha_evento)
-  const reportesFiltrados = useMemo(() => {
-    let lista = reportesCompletos || [];
+  const handleLimpiarFiltros = () => {
+    setFechaReporteInicio("");
+    setFechaReporteFin("");
+    setFechaEventoInicio("");
+    setFechaEventoFin("");
+    setPatrimonioFiltro("");
+    setArrestoFiltro("");
+    setSoloRoboHurto(false);
+    setModalidadesSeleccionadas([]);
+    setEstadosSeleccionados([]);
+    setPaginaActual(1);
 
-    // Filtro por Usuario
-    if (filtro === "MIOS") {
-      const miNombreLower = String(userData?.nombres || "")
-        .toLowerCase()
-        .trim();
-      lista = lista.filter((item) => {
-        const nombreCompletoReporte = String(
-          item.persona_nombre_completo || "",
-        ).toLowerCase();
-        return (
-          nombreCompletoReporte.includes(miNombreLower) && miNombreLower !== ""
-        );
-      });
-    }
-
-    // Rango fecha_evento (Comparación segura por fecha de calendario YYYYMMDD)
-    if (fechaInicio) {
-      const inicioFiltro = Number(fechaInicio.replace(/-/g, ""));
-      lista = lista.filter((item) => {
-        if (!item.fecha_evento) return false;
-        const fechaItemStr = String(item.fecha_evento)
-          .substring(0, 10)
-          .replace(/-/g, "");
-        return Number(fechaItemStr) >= inicioFiltro;
-      });
-    }
-    if (fechaFin) {
-      const finFiltro = Number(fechaFin.replace(/-/g, ""));
-      lista = lista.filter((item) => {
-        if (!item.fecha_evento) return false;
-        const fechaItemStr = String(item.fecha_evento)
-          .substring(0, 10)
-          .replace(/-/g, "");
-        return Number(fechaItemStr) <= finFiltro;
-      });
-    }
-
-    // Rango fecha_reporte (Timestamp)
-    if (fechaReporteInicio) {
-      const inicioTs = new Date(fechaReporteInicio + "T00:00:00").getTime();
-      lista = lista.filter((item) => {
-        if (!item.fecha_reporte) return false;
-        const valReporte =
-          typeof item.fecha_reporte === "string"
-            ? item.fecha_reporte.replace(" ", "T")
-            : item.fecha_reporte;
-        return new Date(valReporte).getTime() >= inicioTs;
-      });
-    }
-    if (fechaReporteFin) {
-      const finTs = new Date(fechaReporteFin + "T23:59:59").getTime();
-      lista = lista.filter((item) => {
-        if (!item.fecha_reporte) return false;
-        const valReporte =
-          typeof item.fecha_reporte === "string"
-            ? item.fecha_reporte.replace(" ", "T")
-            : item.fecha_reporte;
-        return new Date(valReporte).getTime() <= finTs;
-      });
-    }
-
-    // Modalidades
-    if (modalidadesSeleccionadas.length > 0) {
-      lista = lista.filter((item) =>
-        modalidadesSeleccionadas.includes(item.modalidad_nombre),
-      );
-    }
-
-    // Estados (Asegúrate de tener este bloque para que filtre la tabla)
-    if (estadosSeleccionados.length > 0) {
-      lista = lista.filter((item) =>
-        estadosSeleccionados.includes(item.estado || ""),
-      );
-    }
-
-    return lista;
-  }, [
-    reportesCompletos,
-    filtro,
-    userData,
-    fechaInicio,
-    fechaFin,
-    fechaReporteInicio,
-    fechaReporteFin,
-    modalidadesSeleccionadas,
-    estadosSeleccionados, // <-- Fundamental para que el useMemo detecte cambios en los estados
-  ]);
-  const totalTodos = reportesCompletos.length;
-  // LÓGICA funcional
-
-  const totalMios = useMemo(() => {
-    const miNombreLower = String(userData?.nombres || "")
-      .toLowerCase()
-      .trim();
-    if (!miNombreLower) return 0;
-    return (reportesCompletos || []).filter((item) =>
-      String(item.persona_nombre_completo || "")
-        .toLowerCase()
-        .includes(miNombreLower),
-    ).length;
-  }, [reportesCompletos, userData]);
-
-  const totalPaginas = useMemo(() => {
-    const paginas = Math.ceil(reportesFiltrados.length / registrosPorPagina);
-    return paginas > 0 ? paginas : 1;
-  }, [reportesFiltrados, registrosPorPagina]);
-
-  const datosPaginados = useMemo(() => {
-    const inicio = (paginaActual - 1) * registrosPorPagina;
-    const fin = inicio + registrosPorPagina;
-    return reportesFiltrados.slice(inicio, fin);
-  }, [reportesFiltrados, paginaActual, registrosPorPagina]);
-  // Calcula el conteo por estado de forma dinámica
-  const conteoPorEstado = datosPaginados.reduce(
-    (acc, item) => {
-      const estado = String(item.estado || "SIN ESTADO").toUpperCase();
-      acc[estado] = (acc[estado] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-  const exportarExcel = async () => {
-    try {
-      // 1. Activamos el modal de carga (Aquí SOLO se usa, ya NO se declara con const)
-      setCargandoExcel(true);
-
-      // Cedemos el control un instante al navegador para que dibuje el modal
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      const limpiarTextoExcel = (texto: any) => {
-        if (!texto) return "";
-        const str = String(texto);
-        return str.length > 32000 ? str.substring(0, 32000) + "..." : str;
-      };
-
-      const limpiarHora = (hora: any) => {
-        if (!hora) return "";
-        const str = String(hora);
-        if (str.length >= 5) {
-          return str.substring(0, 5);
-        }
-        return str;
-      };
-
-      const formatearFechaExcel = (fecha: any) => {
-        if (!fecha) return "";
-        const fechaStr = String(fecha).substring(0, 10);
-        const [anio, mes, dia] = fechaStr.split("-");
-        if (!anio || !mes || !dia) return String(fecha);
-        return `${dia}/${mes}/${anio}`;
-      };
-
-      const formatearFechaReporteCompleta = (fechaReporte: any) => {
-        if (!fechaReporte) return "S/F";
-        try {
-          const fechaObj = new Date(fechaReporte);
-          if (isNaN(fechaObj.getTime())) return String(fechaReporte);
-
-          const diaSemana = fechaObj
-            .toLocaleDateString("es-PE", { weekday: "short" })
-            .replace(".", "")
-            .toLowerCase();
-          const fechaNumerica = fechaObj.toLocaleDateString("es-PE");
-          const hora = fechaObj.toLocaleTimeString("es-PE", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          });
-          return `${diaSemana} ${fechaNumerica} - ${hora}`;
-        } catch (e) {
-          return String(fechaReporte);
-        }
-      };
-
-      const formatearFotoExcel = (urlFoto: any) => {
-        if (!urlFoto) return "";
-        return String(urlFoto).trim();
-      };
-
-      const obtenerTimestampArchivo = () => {
-        const ahora = new Date();
-        const anio = ahora.getFullYear();
-        const mes = String(ahora.getMonth() + 1).padStart(2, "0");
-        const dia = String(ahora.getDate()).padStart(2, "0");
-        const hora = String(ahora.getHours()).padStart(2, "0");
-        const minuto = String(ahora.getMinutes()).padStart(2, "0");
-        const segundo = String(ahora.getSeconds()).padStart(2, "0");
-        return `${dia}-${mes}-${anio}_${hora}-${minuto}-${segundo}`;
-      };
-
-      // 2. Procesamos el mapeo de los datos
-      const dataParaExcel = reportesFiltrados.map((item: any) => ({
-        ID: item.id_ocurrencia,
-        MARCA_TEMPORAL: formatearFechaReporteCompleta(item.fecha_reporte),
-        DNI_SERENO: limpiarTextoExcel(item.persona_dni),
-        APELLIDOS_NOMBRES: limpiarTextoExcel(item.persona_nombre_completo),
-        ORIGEN: limpiarTextoExcel(item.origen_descripcion),
-        TIPO_PATRULLAJE: limpiarTextoExcel(item.tipo_patrullaje_nombre),
-        MODALIDAD_PATRULLAJE: limpiarTextoExcel(item.mod_patrullaje_nombre),
-        TIPO_UNIDAD: limpiarTextoExcel(item.vehiculo_tipo),
-        PLACA: limpiarTextoExcel(item.vehiculo_placa),
-        TURNO: limpiarTextoExcel(item.turnr),
-        HORA_ALERTA: limpiarHora(item.hora_alerta),
-        HORA_LLEGADA: limpiarHora(item.hora_llegada),
-        HORA_REPLIEGUE: limpiarHora(item.hora_repliegue),
-        FECHA_OCURRENCIA: formatearFechaExcel(item.fecha_evento),
-        REFERENCIA: limpiarTextoExcel(item.referencia),
-        DIRECCIÓN_CONSOLIDADA: limpiarTextoExcel(item.nombre_lugar),
-        COORDENADA: limpiarTextoExcel(item.coordenada),
-        DATOS_IMPORTANTES: limpiarTextoExcel(item.ocurrencia_descripcion),
-        ADJUNTO_1: formatearFotoExcel(item.foto_1),
-        ADJUNTO_2: formatearFotoExcel(item.foto_2),
-        ADJUNTO_3: formatearFotoExcel(item.foto_3),
-        ADJUNTO_4: formatearFotoExcel(item.foto_4),
-        GENERICO: limpiarTextoExcel(item.cat_generica_nombre),
-        ESPECIFICO: limpiarTextoExcel(item.cat_especifica_nombre),
-        MODALIDAD: limpiarTextoExcel(item.modalidad_nombre),
-        DATOS_EFECTIVO: limpiarTextoExcel(item.pnp_datos),
-        RESULTADO: limpiarTextoExcel(item.resultado_des),
-        CONSECUENCIA: limpiarTextoExcel(item.consecuencia_des),
-        LUGAR: limpiarTextoExcel(item.lugar_des),
-        MEDIO: limpiarTextoExcel(item.medio_des),
-        IDENTIDAD: limpiarTextoExcel(item.estado_involucrados),
-        VICTIMA_NOMBRE: limpiarTextoExcel(item.victimas_nombres),
-        VICTIMA_EDAD: limpiarTextoExcel(item.victimas_edades),
-        VICTIMA_PLACA: limpiarTextoExcel(item.victimas_placas),
-        RELACION_CON_AGRESOR: limpiarTextoExcel(item.victimas_relacion),
-        AGRESOR_NOMBRE: limpiarTextoExcel(item.agresores_nombres),
-        AGRESOR_EDAD: limpiarTextoExcel(item.agresores_edades),
-        AGRESOR_PLACA: limpiarTextoExcel(item.agresores_placas),
-        NUMERO_DOCUMENTO: item.codigo_seguimiento
-          ? `${limpiarTextoExcel(item.codigo_seguimiento)}MDJM-GSC-SGS`
-          : "",
-        ESTADO: limpiarTextoExcel(item.estado),
-      }));
-
-      // Pausa corta para estabilidad visual del modal
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // 3. Generación y descarga del Excel
-      const ws = XLSX.utils.json_to_sheet(dataParaExcel);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Historial_Operativo");
-
-      XLSX.writeFile(wb, `Reporte_Integrado_${obtenerTimestampArchivo()}.xlsx`);
-    } catch (error) {
-      console.error("Error al exportar el Excel:", error);
-    } finally {
-      // 4. Ocultar el modal de carga de manera segura
-      setCargandoExcel(false);
-    }
+    setFiltrosAplicados({
+      fechaReporteInicio: "",
+      fechaReporteFin: "",
+      fechaEventoInicio: "",
+      fechaEventoFin: "",
+      patrimonio: "",
+      arresto: "",
+      roboHurto: false,
+      modalidades: [],
+      estados: []
+    });
   };
 
-  const exportarSipcop = async () => {
-    try {
-      // 1. Activamos el modal de carga (Asegúrate de tener declarado const [cargandoExcel, setCargandoExcel] = useState(false) arriba en tu componente)
-      setCargandoExcel(true);
-
-      // Cedemos el control un instante al navegador para que dibuje el modal en pantalla
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      const limpiarTextoExcel = (texto: any) => {
-        if (!texto) return "";
-        const str = String(texto);
-        return str.length > 32000 ? str.substring(0, 32000) + "..." : str;
-      };
-
-      // Helper para limpiar las horas (ej: "23:23:00" -> "23:23")
-      const limpiarHora = (hora: any) => {
-        if (!hora) return "";
-        const str = String(hora);
-        if (str.length >= 5) {
-          return str.substring(0, 5);
-        }
-        return str;
-      };
-
-      // Helper para formatear fechas tipo YYYY-MM-DD a DD/MM/YYYY
-      const formatearFechaExcel = (fecha: any) => {
-        if (!fecha) return "";
-        const fechaStr = String(fecha).substring(0, 10);
-        const [anio, mes, dia] = fechaStr.split("-");
-        if (!anio || !mes || !dia) return String(fecha);
-        return `${dia}/${mes}/${anio}`;
-      };
-
-      // Helper para formatear fecha_reporte idéntico a tu tabla web
-      const formatearFechaReporteCompleta = (fechaReporte: any) => {
-        if (!fechaReporte) return "S/F";
-        try {
-          const fechaObj = new Date(fechaReporte);
-          if (isNaN(fechaObj.getTime())) return String(fechaReporte);
-
-          const diaSemana = fechaObj
-            .toLocaleDateString("es-PE", { weekday: "short" })
-            .replace(".", "")
-            .toLowerCase();
-          const fechaNumerica = fechaObj.toLocaleDateString("es-PE");
-          const hora = fechaObj.toLocaleTimeString("es-PE", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          });
-          return `${diaSemana} ${fechaNumerica} - ${hora}`;
-        } catch (e) {
-          return String(fechaReporte);
-        }
-      };
-
-      // Helper para el timestamp del archivo
-      const obtenerTimestampArchivo = () => {
-        const ahora = new Date();
-        const anio = ahora.getFullYear();
-        const mes = String(ahora.getMonth() + 1).padStart(2, "0");
-        const dia = String(ahora.getDate()).padStart(2, "0");
-        const hora = String(ahora.getHours()).padStart(2, "0");
-        const minuto = String(ahora.getMinutes()).padStart(2, "0");
-        const segundo = String(ahora.getSeconds()).padStart(2, "0");
-        return `${dia}-${mes}-${anio}_${hora}-${minuto}-${segundo}`;
-      };
-
-      // 2. Procesamos el mapeo de los datos
-      const dataParaExcel = reportesFiltrados.map((item: any) => {
-        return {
-          ID: item.id_ocurrencia,
-          MARCA_TEMPORAL: formatearFechaReporteCompleta(item.fecha_reporte),
-          DNI_SERENO: limpiarTextoExcel(item.persona_dni),
-          APELLIDOS_NOMBRES: limpiarTextoExcel(item.persona_nombre_completo),
-          ORIGEN: limpiarTextoExcel(item.origen_descripcion),
-          TIPO_PATRULLAJE: limpiarTextoExcel(item.tipo_patrullaje_nombre),
-          MODALIDAD_PATRULLAJE: limpiarTextoExcel(item.mod_patrullaje_nombre),
-          TIPO_UNIDAD: limpiarTextoExcel(item.vehiculo_tipo),
-          DATOS_EFECTIVO: limpiarTextoExcel(item.pnp_datos),
-          PLACA: limpiarTextoExcel(item.vehiculo_placa),
-          TURNO: limpiarTextoExcel(item.turnr),
-          HORA_ALERTA: limpiarHora(item.hora_alerta),
-          HORA_LLEGADA: limpiarHora(item.hora_llegada),
-          HORA_REPLIEGUE: limpiarHora(item.hora_repliegue),
-          FECHA_OCURRENCIA: formatearFechaExcel(item.fecha_evento),
-          CODIGO: limpiarTextoExcel(item.codmod),
-          MODALIDAD: limpiarTextoExcel(item.modalidad_nombre),
-          RESULTADO: limpiarTextoExcel(item.resultado_des),
-          CONSECUENCIA: limpiarTextoExcel(item.consecuencia_des),
-          LUGAR: limpiarTextoExcel(item.lugar_des),
-          MEDIO: limpiarTextoExcel(item.medio_des),
-          DIRECCIÓN_CONSOLIDADA: limpiarTextoExcel(item.nombre_lugar),
-          REFERENCIA: limpiarTextoExcel(item.referencia),
-          DATOS_IMPORTANTES: limpiarTextoExcel(item.ocurrencia_descripcion),
-          VICTIMA_NOMBRE: limpiarTextoExcel(item.victimas_nombres),
-          VICTIMA_EDAD: limpiarTextoExcel(item.victimas_edades),
-          VICTIMA_PLACA: limpiarTextoExcel(item.victimas_placas),
-          RELACION_CON_AGRESOR: limpiarTextoExcel(item.victimas_relacion),
-          AGRESOR_NOMBRE: limpiarTextoExcel(item.agresores_nombres),
-          AGRESOR_EDAD: limpiarTextoExcel(item.agresores_edades),
-          AGRESOR_PLACA: limpiarTextoExcel(item.agresores_placas),
-          NUMERO_DOCUMENTO: item.codigo_seguimiento
-            ? `${limpiarTextoExcel(item.codigo_seguimiento)}MDJM-GSC-SGS`
-            : "",
-          ESTADO: limpiarTextoExcel(item.estado),
-        };
-      });
-
-      // Pausa corta para estabilidad visual del modal con grandes volúmenes
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // 3. Generación y descarga del archivo Excel
-      const ws = XLSX.utils.json_to_sheet(dataParaExcel);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Sipcop_Operativo");
-      XLSX.writeFile(wb, `Reporte_Sipcop_${obtenerTimestampArchivo()}.xlsx`);
-    } catch (error) {
-      console.error("Error al exportar el reporte SIPCOP:", error);
-    } finally {
-      // 4. Ocultar el modal de carga de manera segura
-      setCargandoExcel(false);
-    }
-  };
+  const cantidadFiltrosActivos = useMemo(() => {
+    let count = 0;
+    if (fechaReporteInicio || fechaReporteFin) count++;
+    if (fechaEventoInicio || fechaEventoFin) count++;
+    if (patrimonioFiltro) count++;
+    if (arrestoFiltro) count++;
+    if (soloRoboHurto) count++;
+    if (modalidadesSeleccionadas.length > 0) count += modalidadesSeleccionadas.length;
+    if (estadosSeleccionados.length > 0) count += estadosSeleccionados.length;
+    return count;
+  }, [fechaReporteInicio, fechaReporteFin, fechaEventoInicio, fechaEventoFin, patrimonioFiltro, arrestoFiltro, soloRoboHurto, modalidadesSeleccionadas, estadosSeleccionados]);
 
   return (
     <div style={styles.container}>
-      {/* Cabecera Principal */}
+      {/* CABECERA DINÁMICA */}
       <div style={styles.header}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "15px",
-            flexWrap: "wrap",
-          }}
-        >
-          <h2
-            style={{
-              color: MJM_BLUE,
-              margin: 0,
-              fontWeight: 700,
-              fontSize: "20px",
-            }}
-          >
-            REPORTE FORMATO:
-          </h2>
-          <button
-            onClick={exportarExcel}
-            style={{ ...styles.btnExport, backgroundColor: MJM_BLUE }}
-          >
-            <Ionicons name="document-text" size={16} color="white" />
-          </button>
-
-          <h2
-            style={{
-              color: MJM_BLUE,
-              margin: 0,
-              fontWeight: 700,
-              fontSize: "20px",
-            }}
-          >
-            SIPCOP-M :
-          </h2>
-
-          <button
-            onClick={exportarSipcop}
-            style={{ ...styles.btnExport, backgroundColor: MJM_BLUE }}
-          >
-            <Ionicons name="document-text" size={16} color="white" />
-          </button>
-        </div>
-
-        <div style={styles.tabs}>
-          <button
-            onClick={() => handleCambioFiltro("TODOS")}
-            style={filtro === "TODOS" ? styles.tabActive : styles.tab}
-          >
-            TODO ({totalTodos})
-          </button>
-          <button
-            onClick={() => handleCambioFiltro("MIOS")}
-            style={filtro === "MIOS" ? styles.tabActive : styles.tab}
-          >
-            MIS REGISTROS ({totalMios})
-          </button>
-        </div>
+        <h2 style={{ color: MJM_BLUE, margin: 0, fontWeight: 700, fontSize: "20px" }}>
+          {esBusqueda12Horas
+            ? `Total Registros (Últimas 12 horas): ${totalRegistrosBD} registros`
+            : `Total Registros: ${totalRegistrosBD} registros`}
+        </h2>
       </div>
 
-      {/* PANEL DE FILTROS: FECHAS Y DESPLEGABLE DE MODALIDADES A LA DERECHA */}
+      {/* PANEL DE FILTROS */}
       <div style={styles.filterCard}>
         <div style={styles.filterRow}>
-          {/* CAJA 2: BLOQUE DE FECHAS DE REPORTE (Desde izq / Hasta der) */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {" "}
-            {/* gap aumentado de 6px a 8px */}
-            <label
-              style={{
-                ...styles.filterLabel,
-                fontSize: "13px",
-                fontWeight: "bold",
-              }}
-            >
-              FECHA DE REGISTRO:
-            </label>{" "}
-            {/* Fuente de etiqueta más grande */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                gap: "12px" /* Separación entre inputs aumentada de 8px a 12px */,
-                alignItems: "center",
-              }}
-            >
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "4px" }}
-              >
-                <input
-                  type="date"
-                  value={fechaReporteInicio}
-                  onChange={(e) => {
-                    setFechaReporteInicio(e.target.value);
-                    setPaginaActual(1);
-                  }}
-                  style={{
-                    ...styles.inputDate,
-                    width: "160px" /* Ancho aumentado de 135px a 160px */,
-                    fontSize: "13px" /* Fuente de la fecha más grande */,
-                    padding:
-                      "6px 8px" /* Relleno interno para darle más volumen al input */,
-                  }}
-                />
-              </div>
-              <label
-                style={{
-                  ...styles.filterLabel,
-                  fontSize: "16px",
-                  fontWeight: "bold",
-                  paddingBottom: "4px",
-                }}
-              >
-                -
-              </label>{" "}
-              {/* Separador más grande */}
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "4px" }}
-              >
-                <input
-                  type="date"
-                  value={fechaReporteFin}
-                  onChange={(e) => {
-                    setFechaReporteFin(e.target.value);
-                    setPaginaActual(1);
-                  }}
-                  style={{
-                    ...styles.inputDate,
-                    width: "160px" /* Ancho aumentado de 135px a 160px */,
-                    fontSize: "13px" /* Fuente de la fecha más grande */,
-                    padding:
-                      "6px 8px" /* Relleno interno para darle más volumen al input */,
-                  }}
-                />
-              </div>
+          {/* FECHA REGISTRO (SIEMPRE ACTIVA) */}
+          <div>
+            <label style={styles.filterLabel}>FECHA REGISTRO:</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input type="date" max={fechaHoy} value={fechaReporteInicio} onChange={(e) => setFechaReporteInicio(e.target.value)} style={styles.inputDate} />
+              <span>-</span>
+              <input type="date" max={fechaHoy} value={fechaReporteFin} onChange={(e) => setFechaReporteFin(e.target.value)} style={styles.inputDate} />
             </div>
           </div>
 
-          {/* CAJA 1: BLOQUE DE FECHAS DE EVENTO (Desde izq / Hasta der) */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {" "}
-            {/* gap aumentado a 8px */}
-            <label
-              style={{
-                ...styles.filterLabel,
-                fontSize: "13px",
-                fontWeight: "bold",
-              }}
-            >
-              FECHA DE OCURRENCIA:
-            </label>{" "}
-            {/* Etiqueta más grande */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                gap: "12px" /* Separación aumentada a 12px */,
-                alignItems: "center",
-              }}
-            >
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "4px" }}
-              >
-                <input
-                  type="date"
-                  value={fechaInicio}
-                  onChange={(e) => {
-                    setFechaInicio(e.target.value);
-                    setPaginaActual(1);
-                  }}
-                  style={{
-                    ...styles.inputDate,
-                    width: "160px" /* Ancho aumentado a 160px */,
-                    fontSize: "13px" /* Letra de fecha más grande */,
-                    padding: "6px 8px" /* Padding para dar volumen */,
-                  }}
-                />
-              </div>
-              <label
-                style={{
-                  ...styles.filterLabel,
-                  fontSize: "16px",
-                  fontWeight: "bold",
-                  paddingBottom: "4px",
-                }}
-              >
-                -
-              </label>{" "}
-              {/* Guion como separador más grande */}
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "4px" }}
-              >
-                <input
-                  type="date"
-                  value={fechaFin}
-                  onChange={(e) => {
-                    setFechaFin(e.target.value);
-                    setPaginaActual(1);
-                  }}
-                  style={{
-                    ...styles.inputDate,
-                    width: "160px" /* Ancho aumentado a 160px */,
-                    fontSize: "13px" /* Letra de fecha más grande */,
-                    padding: "6px 8px" /* Padding para dar volumen */,
-                  }}
-                />
-              </div>
+          {/* FECHA OCURRENCIA (SIEMPRE ACTIVA) */}
+          <div>
+            <label style={styles.filterLabel}>FECHA OCURRENCIA:</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input type="date" max={fechaHoy} value={fechaEventoInicio} onChange={(e) => setFechaEventoInicio(e.target.value)} style={styles.inputDate} />
+              <span>-</span>
+              <input type="date" max={fechaHoy} value={fechaEventoFin} onChange={(e) => setFechaEventoFin(e.target.value)} style={styles.inputDate} />
             </div>
           </div>
 
-          {/* CONTENEDOR DERECHO (Modalidades + Estados + Limpiar Todo) */}
-          <div style={{ ...styles.filterRightContainer, gap: "8px" }}>
-            {/* DESPLEGABLE COMPACTO DE MODALIDADES */}
-            <div
-              id="dropdown-modalidades-container"
-              style={styles.dropdownContainer}
+          {/* PATRIMONIO (BLOQUEADO HASTA ELEGIR FECHAS) */}
+          <div>
+            <label style={styles.filterLabel}>PATRIMONIO:</label>
+            <select 
+              value={patrimonioFiltro} 
+              onChange={(e) => setPatrimonioFiltro(e.target.value)} 
+              disabled={!tieneFechasSeleccionadas}
+              style={{ ...styles.selectRows, opacity: tieneFechasSeleccionadas ? 1 : 0.5, cursor: tieneFechasSeleccionadas ? "pointer" : "not-allowed" }}
             >
-              <button
-                onClick={() =>
-                  setDropdownModalidadesOpen(!dropdownModalidadesOpen)
-                }
-                style={styles.dropdownButton}
-              >
-                <span>
-                  {modalidadesSeleccionadas.length === 0
-                    ? "Filtrar Modalidades"
-                    : `Modalidades (${modalidadesSeleccionadas.length})`}
-                </span>
-                <Ionicons
-                  name={dropdownModalidadesOpen ? "chevron-up" : "chevron-down"}
-                  size={14}
-                  color="#334155"
-                />
-              </button>
+              <option value="">TODOS</option>
+              <option value="SI">SI</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
 
-              {dropdownModalidadesOpen && (
-                <div style={styles.dropdownMenu}>
-                  <div style={styles.dropdownHeaderMenu}>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: "700",
-                        color: "#024885",
-                      }}
-                    >
-                      SELECCIONAR MODALIDAD
-                    </span>
-                    {modalidadesSeleccionadas.length > 0 && (
-                      <button
-                        onClick={() => setModalidadesSeleccionadas([])}
-                        style={styles.btnClearSelection}
-                      >
-                        Limpiar
-                      </button>
-                    )}
-                  </div>
-                  <div style={styles.dropdownListScroll}>
-                    {listaModalidadesDisponibles.map((mod) => {
-                      const seleccionado =
-                        modalidadesSeleccionadas.includes(mod);
-                      return (
-                        <label key={mod} style={styles.dropdownCheckboxItem}>
-                          <input
-                            type="checkbox"
-                            checked={seleccionado}
-                            onChange={() => toggleModalidadFiltro(mod)}
-                            style={{ cursor: "pointer" }}
-                          />
-                          <span style={{ fontSize: "10px", color: "#1e293b" }}>
-                            {mod}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* DESPLEGABLE COMPACTO DE ESTADOS */}
-            <div
-              id="dropdown-estados-container"
-              style={styles.dropdownContainer}
+          {/* ARRESTO (BLOQUEADO HASTA ELEGIR FECHAS) */}
+          <div>
+            <label style={styles.filterLabel}>ARRESTO:</label>
+            <select 
+              value={arrestoFiltro} 
+              onChange={(e) => setArrestoFiltro(e.target.value)} 
+              disabled={!tieneFechasSeleccionadas}
+              style={{ ...styles.selectRows, opacity: tieneFechasSeleccionadas ? 1 : 0.5, cursor: tieneFechasSeleccionadas ? "pointer" : "not-allowed" }}
             >
-              <button
-                onClick={() => setDropdownEstadosOpen(!dropdownEstadosOpen)}
-                style={styles.dropdownButton}
-              >
-                <span>
-                  {estadosSeleccionados.length === 0
-                    ? "Filtrar Estados"
-                    : `Estados (${estadosSeleccionados.length})`}
-                </span>
-                <Ionicons
-                  name={dropdownEstadosOpen ? "chevron-up" : "chevron-down"}
-                  size={14}
-                  color="#334155"
-                />
-              </button>
+              <option value="">TODOS</option>
+              <option value="SI">SI</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
 
-              {dropdownEstadosOpen && (
-                <div style={styles.dropdownMenu}>
-                  <div style={styles.dropdownHeaderMenu}>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: "700",
-                        color: "#024885",
-                      }}
-                    >
-                      SELECCIONAR ESTADO
-                    </span>
-                    {estadosSeleccionados.length > 0 && (
-                      <button
-                        onClick={() => setEstadosSeleccionados([])}
-                        style={styles.btnClearSelection}
-                      >
-                        Limpiar
-                      </button>
-                    )}
-                  </div>
-                  <div style={styles.dropdownListScroll}>
-                    {listaEstadosDisponibles.map((st) => {
-                      const seleccionado = estadosSeleccionados.includes(st);
-                      return (
-                        <label key={st} style={styles.dropdownCheckboxItem}>
-                          <input
-                            type="checkbox"
-                            checked={seleccionado}
-                            onChange={() => toggleEstadoFiltro(st)}
-                            style={{ cursor: "pointer" }}
-                          />
-                          <span style={{ fontSize: "10px", color: "#1e293b" }}>
-                            {st}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+          {/* DELITO DESCRIPCIÓN (BLOQUEADO HASTA ELEGIR FECHAS) */}
+          <div>
+            <label style={styles.filterLabel}>DELITO DESCRIPCIÓN:</label>
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "600", cursor: tieneFechasSeleccionadas ? "pointer" : "not-allowed", marginTop: "6px", opacity: tieneFechasSeleccionadas ? 1 : 0.5 }}>
+              <input 
+                type="checkbox" 
+                checked={soloRoboHurto} 
+                disabled={!tieneFechasSeleccionadas}
+                onChange={(e) => setSoloRoboHurto(e.target.checked)} 
+              />
+              Robo / Hurto
+            </label>
+          </div>
+
+          {/* DESPLEGABLE MODALIDADES (BLOQUEADO HASTA ELEGIR FECHAS) */}
+          <div id="dropdown-modalidades-container" style={{ ...styles.dropdownContainer, opacity: tieneFechasSeleccionadas ? 1 : 0.5 }}>
+            <button 
+              onClick={() => tieneFechasSeleccionadas && setDropdownModalidadesOpen(!dropdownModalidadesOpen)} 
+              disabled={!tieneFechasSeleccionadas}
+              style={{ ...styles.dropdownButton, cursor: tieneFechasSeleccionadas ? "pointer" : "not-allowed" }}
+            >
+              <span>{modalidadesSeleccionadas.length === 0 ? "Filtrar Modalidades" : `Modalidades (${modalidadesSeleccionadas.length})`}</span>
+              <Ionicons name={dropdownModalidadesOpen ? "chevron-up" : "chevron-down"} size={14} color="#334155" />
+            </button>
+            {dropdownModalidadesOpen && tieneFechasSeleccionadas && (
+              <div style={styles.dropdownMenu}>
+                <div style={styles.dropdownHeaderMenu}>
+                  <span style={{ fontSize: "11px", fontWeight: "700", color: "#024885" }}>MODALIDADES</span>
+                  {modalidadesSeleccionadas.length > 0 && (
+                    <button onClick={() => setModalidadesSeleccionadas([])} style={styles.btnClearSelection}>Limpiar</button>
+                  )}
                 </div>
-              )}
-            </div>
+                <div style={styles.dropdownListScroll}>
+                  {listaModalidadesDisponibles.map((mod) => (
+                    <label key={mod} style={styles.dropdownCheckboxItem}>
+                      <input type="checkbox" checked={modalidadesSeleccionadas.includes(mod)} onChange={() => toggleModalidadFiltro(mod)} />
+                      <span style={{ fontSize: "10px" }}>{mod}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
-            {/* BOTÓN LIMPIAR TODO */}
-            {(fechaInicio ||
-              fechaFin ||
-              fechaReporteInicio ||
-              fechaReporteFin ||
-              modalidadesSeleccionadas.length > 0 ||
-              estadosSeleccionados.length > 0) && (
-              <button
-                onClick={() => {
-                  setFechaInicio("");
-                  setFechaFin("");
-                  setFechaReporteInicio("");
-                  setFechaReporteFin("");
-                  setModalidadesSeleccionadas([]);
-                  setEstadosSeleccionados([]);
-                  setPaginaActual(1);
-                }}
-                style={{
-                  ...styles.btnClearFilters,
-                  visibility:
-                    fechaInicio ||
-                    fechaFin ||
-                    fechaReporteInicio ||
-                    fechaReporteFin ||
-                    modalidadesSeleccionadas.length > 0 ||
-                    estadosSeleccionados.length > 0
-                      ? "visible"
-                      : "hidden",
-                  opacity:
-                    fechaInicio ||
-                    fechaFin ||
-                    fechaReporteInicio ||
-                    fechaReporteFin ||
-                    modalidadesSeleccionadas.length > 0 ||
-                    estadosSeleccionados.length > 0
-                      ? 1
-                      : 0,
-                  transition: "opacity 0.2s ease-in-out",
-                  cursor: "pointer",
-                }}
-              >
-                Limpiar Todo
+          {/* DESPLEGABLE ESTADOS (BLOQUEADO HASTA ELEGIR FECHAS) */}
+          <div id="dropdown-estados-container" style={{ ...styles.dropdownContainer, opacity: tieneFechasSeleccionadas ? 1 : 0.5 }}>
+            <button 
+              onClick={() => tieneFechasSeleccionadas && setDropdownEstadosOpen(!dropdownEstadosOpen)} 
+              disabled={!tieneFechasSeleccionadas}
+              style={{ ...styles.dropdownButton, cursor: tieneFechasSeleccionadas ? "pointer" : "not-allowed" }}
+            >
+              <span>{estadosSeleccionados.length === 0 ? "Filtrar Estados" : `Estados (${estadosSeleccionados.length})`}</span>
+              <Ionicons name={dropdownEstadosOpen ? "chevron-up" : "chevron-down"} size={14} color="#334155" />
+            </button>
+            {dropdownEstadosOpen && tieneFechasSeleccionadas && (
+              <div style={styles.dropdownMenu}>
+                <div style={styles.dropdownHeaderMenu}>
+                  <span style={{ fontSize: "11px", fontWeight: "700", color: "#024885" }}>ESTADOS</span>
+                  {estadosSeleccionados.length > 0 && (
+                    <button onClick={() => setEstadosSeleccionados([])} style={styles.btnClearSelection}>Limpiar</button>
+                  )}
+                </div>
+                <div style={styles.dropdownListScroll}>
+                  {listaEstadosDisponibles.map((est) => (
+                    <label key={est} style={styles.dropdownCheckboxItem}>
+                      <input type="checkbox" checked={estadosSeleccionados.includes(est)} onChange={() => toggleEstadoFiltro(est)} />
+                      <span style={{ fontSize: "10px" }}>{est}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* BOTONES BUSCAR Y LIMPIAR */}
+          <div style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginTop: "auto" }}>
+            <button 
+              onClick={handleEjecutarBusqueda} 
+              disabled={!tieneFechasSeleccionadas}
+              style={{ 
+                ...styles.btnSearch, 
+                backgroundColor: tieneFechasSeleccionadas ? MJM_BLUE : "#94a3b8",
+                cursor: tieneFechasSeleccionadas ? "pointer" : "not-allowed" 
+              }}
+            >
+              <Ionicons name="search" size={14} color="white" /> Buscar
+            </button>
+            {cantidadFiltrosActivos > 0 && (
+              <button onClick={handleLimpiarFiltros} style={styles.btnClearFilters}>
+                <Ionicons name="reload" size={14} color="white" /> Limpiar ({cantidadFiltrosActivos})
               </button>
             )}
           </div>
         </div>
       </div>
-      {/* Tabla de Datos Acondicionada */}
+
+      {/* TABLA PRINCIPAL */}
       <div style={styles.tableCard}>
         <div style={styles.tableScrollContainer}>
-          <table
-            style={{
-              ...styles.table,
-              tableLayout: "fixed",
-              width: "100%",
-              borderCollapse: "collapse",
-            }}
-          >
-            <thead>
+          <table style={{ ...styles.table, tableLayout: "fixed", width: "100%", borderCollapse: "collapse" }}>
+          <thead>
               <tr style={styles.thead}>
                 <th
                   style={{
                     ...styles.th,
-                    width: "4%",
+                    width: "3.5%",
                     textAlign: "center",
                     borderRight: "1px solid #cbd5e1",
                   }}
@@ -1233,17 +652,17 @@ const fetchOcurrencias = useCallback(async () => {
                 <th
                   style={{
                     ...styles.th,
-                    width: "14%",
+                    width: "10%",
                     textAlign: "center",
                     borderRight: "1px solid #cbd5e1",
                   }}
                 >
-                  MARCA TEMPORAL
+                  FECHA REGISTRO
                 </th>
                 <th
                   style={{
                     ...styles.th,
-                    width: "11.5%",
+                    width: "10%",
                     textAlign: "center",
                     borderRight: "1px solid #cbd5e1",
                   }}
@@ -1253,7 +672,7 @@ const fetchOcurrencias = useCallback(async () => {
                 <th
                   style={{
                     ...styles.th,
-                    width: "14%",
+                    width: "10%",
                     textAlign: "center",
                     borderRight: "1px solid #cbd5e1",
                   }}
@@ -1264,12 +683,12 @@ const fetchOcurrencias = useCallback(async () => {
                 <th
                   style={{
                     ...styles.th,
-                    width: "7%",
+                    width: "5%",
                     textAlign: "center",
                     borderRight: "1px solid #cbd5e1",
                   }}
                 >
-                  FECHA
+                  FECHA OCURRENCIA
                 </th>
                 <th
                   style={{
@@ -1291,7 +710,30 @@ const fetchOcurrencias = useCallback(async () => {
                 >
                   AGRESOR
                 </th>
+                
+
                 <th
+                  style={{
+                    ...styles.th,
+                    width: "9%",
+                    textAlign: "center",
+                    borderRight: "1px solid #cbd5e1",
+                  }}
+                >
+                  RESULTADO
+                </th>
+
+                <th
+                  style={{
+                    ...styles.th,
+                    width: "9%",
+                    textAlign: "center",
+                    borderRight: "1px solid #cbd5e1",
+                  }}
+                >
+                  CONSECUENCIA
+                </th>
+<th
                   style={{
                     ...styles.th,
                     width: "5%",
@@ -1301,6 +743,7 @@ const fetchOcurrencias = useCallback(async () => {
                 >
                   LUGAR
                 </th>
+
                 <th
                   style={{
                     ...styles.th,
@@ -1311,26 +754,7 @@ const fetchOcurrencias = useCallback(async () => {
                 >
                   MEDIO
                 </th>
-                <th
-                  style={{
-                    ...styles.th,
-                    width: "7%",
-                    textAlign: "center",
-                    borderRight: "1px solid #cbd5e1",
-                  }}
-                >
-                  RESULTADO
-                </th>
-                <th
-                  style={{
-                    ...styles.th,
-                    width: "7%",
-                    textAlign: "center",
-                    borderRight: "1px solid #cbd5e1",
-                  }}
-                >
-                  CONSECUENCIA
-                </th>
+
                 <th
                   style={{
                     ...styles.th,
@@ -1367,567 +791,552 @@ const fetchOcurrencias = useCallback(async () => {
               </tr>
             </thead>
             <tbody>
-              {datosPaginados.map((item) => (
-                <tr
-                  key={item.id_ocurrencia}
-                  className="fila-tabla-operativa"
-                  style={styles.tr}
-                  onClick={() => setDetalleSeleccionado(item)}
-                >
-                  {/* Celda N° */}
+              {loading ? (
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: "30px" }}>Cargando registros...</td></tr>
+              ) : reportesCompletos.length === 0 ? (
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: "30px" }}>No se encontraron registros.</td></tr>
+              ) : (
+                reportesCompletos.map((item) => (
+                  <tr key={item.id_ocurrencia} style={styles.tr} onClick={() => setDetalleSeleccionado(item)}>
                   <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.txtB,
-                        textAlign: "center",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                      title={String(item.id_ocurrencia)}
-                    >
-                      #{item.id_ocurrencia}
-                    </div>
-                  </td>
-
-                  {/* Celda Fecha Registro */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      overflow: "hidden",
-                      borderRight: "1px solid #e2e8f0",
-                    }}
-                  >
-                    <div style={styles.celdaTruncadaContainer}>
-                      <div
-                        style={{
-                          ...styles.txtB,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {item.fecha_reporte
-                          ? (() => {
-                              const fechaObj = new Date(item.fecha_reporte);
-                              const diaSemana = fechaObj
-                                .toLocaleDateString("es-PE", {
-                                  weekday: "short",
-                                })
-                                .replace(".", "")
-                                .toLowerCase();
-                              const fechaNumerica =
-                                fechaObj.toLocaleDateString("es-PE");
-                              const hora = fechaObj.toLocaleTimeString(
-                                "es-PE",
-                                {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  hour12: false,
-                                },
-                              );
-                              return `${diaSemana} ${fechaNumerica} - ${hora}`;
-                            })()
-                          : item.fecha_evento || "S/F"}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* DI (Datos Importantes) */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        overflow: "hidden",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          ...styles.txtB,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          flex: 1,
-                        }}
-                        title={item.ocurrencia_descripcion || "---"}
-                      >
-                        {item.ocurrencia_descripcion || "---"}
-                      </div>
-
-                      {(() => {
-                        let fotosArray: any[] = [];
-                        try {
-                          const itemData = item as any;
-                          const fotosVal = itemData.fotos_json;
-                          fotosArray = fotosVal
-                            ? typeof fotosVal === "string"
-                              ? JSON.parse(fotosVal)
-                              : fotosVal
-                            : itemData.lista_fotos ||
-                              itemData.fotos ||
-                              (itemData.foto_principal
-                                ? [itemData.foto_principal]
-                                : []);
-                        } catch (e) {
-                          fotosArray = (item as any).foto_principal
-                            ? [(item as any).foto_principal]
-                            : [];
-                        }
-
-                        const totalFotos = Array.isArray(fotosArray)
-                          ? fotosArray.length
-                          : 0;
-                        if (totalFotos === 0) return null;
-
-                        return (
-                          <span
-                            style={{
-                              color: "#024885",
-                              fontWeight: "700",
-                              fontSize: "12px",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            ({totalFotos}f)
-                          </span>
-                        );
-                      })()}
-                    </div>
-                  </td>
-
-                  {/* Celda Modalidad */}
-                  {/* Celda Modalidad */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      maxWidth: "300px", // Aumentado para que los textos medianos entren bien
-                    }}
-                  >
-                    <span
-                      style={{
-                        ...styles.badge,
-                        backgroundColor: "#f1f5f9",
-                        color: "#475569",
-                        fontWeight: "700",
-                        display: "-webkit-box",
-                        WebkitLineClamp: "2", // Máximo 2 líneas por si hay textos largos
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        wordBreak: "break-word",
-                      }}
-                      title={item.modalidad_nombre}
-                    >
-                      {item.modalidad_nombre}
-                    </span>
-                  </td>
-                  {/* FECHA EVENTO*/}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.txtB,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        fontSize: "12px",
-                      }}
-                      title={item.fecha_evento}
-                    >
-                      {item.fecha_evento
-                        ? (() => {
-                            // Extraemos directamente los primeros 10 caracteres (YYYY-MM-DD) sin problemas de zona horaria
-                            const fechaStr = String(
-                              item.fecha_evento,
-                            ).substring(0, 10);
-                            const [anio, mes, dia] = fechaStr.split("-");
-                            if (!anio || !mes || !dia) return item.fecha_evento;
-                            return `${dia}/${mes}/${anio}`;
-                          })()
-                        : "S/F"}
-                    </div>
-                  </td>
-                  {/* CELDA: Víctima */}
-                  {/* CELDA: Víctima */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      overflow: "hidden",
-                      // --- ESTILOS CON EL COLOR #024885 ---
-                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
-                      borderLeft: "3px solid #024885", // Línea lateral con tu color exacto
-                    }}
-                  >
-                    <div style={{ overflow: "hidden" }}>
-                      <div
-                        style={{
-                          ...styles.txtB,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          fontSize: "12px",
-                        }}
-                        title={item.nombre_victima || ""}
-                      >
-                        {item.victimas && item.victimas.length > 0 && (
-                          <span
-                            style={{
-                              color: "#dc2626",
-                              fontSize: "0.85em",
-                              fontWeight: "bold",
-                              marginRight: "4px",
-                            }}
-                          >
-                            ({item.victimas.length})
-                          </span>
-                        )}
-                        {item.nombre_victima || ""}
-                      </div>
-                      <div
-                        style={{
-                          ...styles.txtS,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          fontSize: "11px",
-                        }}
-                        title={
-                          item.edad_victima ? `Edad: ${item.edad_victima}` : ""
-                        }
-                      >
-                        {item.edad_victima ? `Edad: ${item.edad_victima}` : ""}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* CELDA: Agresor */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      overflow: "hidden",
-                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
-                    }}
-                  >
-                    <div style={{ overflow: "hidden" }}>
-                      <div
-                        style={{
-                          ...styles.txtB,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          fontSize: "12px",
-                        }}
-                        title={item.nombre_agresor || ""}
-                      >
-                        {item.agresores && item.agresores.length > 0 && (
-                          <span
-                            style={{
-                              color: "#dc2626",
-                              fontSize: "0.85em",
-                              fontWeight: "bold",
-                              marginRight: "4px",
-                            }}
-                          >
-                            ({item.agresores.length})
-                          </span>
-                        )}
-                        {item.nombre_agresor || ""}
-                      </div>
-                      <div
-                        style={{
-                          ...styles.txtS,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          fontSize: "11px",
-                        }}
-                        title={`${item.edad_agresor ? `Edad: ${item.edad_agresor}` : ""} ${item.placa_agresor ? `Placa: ${item.placa_agresor}` : ""}`}
-                      >
-                        {item.edad_agresor ? `Edad: ${item.edad_agresor}` : ""}{" "}
-                        {item.placa_agresor
-                          ? `Placa: ${item.placa_agresor}`
-                          : ""}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* CELDA: Lugar Evento */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
-                      borderLeft: "3px solid #024885", // Línea lateral con tu color exacto
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.txtB,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        fontSize: "12px",
-                      }}
-                      title={item.lugar_des || "---"}
-                    >
-                      {item.lugar_des || "---"}
-                    </div>
-                  </td>
-
-                  {/* CELDA: Medio */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      overflow: "hidden",
-                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.txtB,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        fontSize: "12px",
-                      }}
-                      title={item.medio_des || "---"}
-                    >
-                      {item.medio_des || "---"}
-                    </div>
-                  </td>
-
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        ...styles.txtB,
+                                        textAlign: "center",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                      }}
+                                      title={String(item.id_ocurrencia)}
+                                    >
+                                      #{item.id_ocurrencia}
+                                    </div>
+                                  </td>
+                
+                                  {/* Celda Fecha Registro */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      overflow: "hidden",
+                                      borderRight: "1px solid #e2e8f0",
+                                    }}
+                                  >
+                                    <div style={styles.celdaTruncadaContainer}>
+                                      <div
+                                        style={{
+                                          ...styles.txtB,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                        }}
+                                      >
+                                        {item.fecha_reporte
+                                          ? (() => {
+                                              const fechaObj = new Date(item.fecha_reporte);
+                                              const diaSemana = fechaObj
+                                                .toLocaleDateString("es-PE", {
+                                                  weekday: "short",
+                                                })
+                                                .replace(".", "")
+                                                .toLowerCase();
+                                              const fechaNumerica =
+                                                fechaObj.toLocaleDateString("es-PE");
+                                              const hora = fechaObj.toLocaleTimeString(
+                                                "es-PE",
+                                                {
+                                                  hour: "2-digit",
+                                                  minute: "2-digit",
+                                                  hour12: false,
+                                                },
+                                              );
+                                              return `${diaSemana} ${fechaNumerica} - ${hora}`;
+                                            })()
+                                          : item.fecha_evento || "S/F"}
+                                      </div>
+                                    </div>
+                                  </td>
+                
+                                  {/* DI (Datos Importantes) */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        overflow: "hidden",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "8px",
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          ...styles.txtB,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          flex: 1,
+                                        }}
+                                        title={item.ocurrencia_descripcion || "---"}
+                                      >
+                                        {item.ocurrencia_descripcion || "---"}
+                                      </div>
+                
+                                      {(() => {
+                                        let fotosArray: any[] = [];
+                                        try {
+                                          const itemData = item as any;
+                                          const fotosVal = itemData.fotos_json;
+                                          fotosArray = fotosVal
+                                            ? typeof fotosVal === "string"
+                                              ? JSON.parse(fotosVal)
+                                              : fotosVal
+                                            : itemData.lista_fotos ||
+                                              itemData.fotos ||
+                                              (itemData.foto_principal
+                                                ? [itemData.foto_principal]
+                                                : []);
+                                        } catch (e) {
+                                          fotosArray = (item as any).foto_principal
+                                            ? [(item as any).foto_principal]
+                                            : [];
+                                        }
+                
+                                        const totalFotos = Array.isArray(fotosArray)
+                                          ? fotosArray.length
+                                          : 0;
+                                        if (totalFotos === 0) return null;
+                
+                                        return (
+                                          <span
+                                            style={{
+                                              color: "#024885",
+                                              fontWeight: "700",
+                                              fontSize: "12px",
+                                              whiteSpace: "nowrap",
+                                            }}
+                                          >
+                                            ({totalFotos}f)
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
+                                  </td>
+                
+                                  {/* Celda Modalidad */}
+                                  {/* Celda Modalidad */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      maxWidth: "300px", // Aumentado para que los textos medianos entren bien
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        ...styles.badge,
+                                        backgroundColor: "#f1f5f9",
+                                        color: "#475569",
+                                        fontWeight: "700",
+                                        display: "-webkit-box",
+                                        WebkitLineClamp: "2", // Máximo 2 líneas por si hay textos largos
+                                        WebkitBoxOrient: "vertical",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        wordBreak: "break-word",
+                                      }}
+                                      title={item.modalidad_nombre}
+                                    >
+                                      {item.modalidad_nombre}
+                                    </span>
+                                  </td>
+                                  {/* FECHA EVENTO*/}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        ...styles.txtB,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        fontSize: "12px",
+                                      }}
+                                      title={item.fecha_evento}
+                                    >
+                                      {item.fecha_evento
+                                        ? (() => {
+                                            // Extraemos directamente los primeros 10 caracteres (YYYY-MM-DD) sin problemas de zona horaria
+                                            const fechaStr = String(
+                                              item.fecha_evento,
+                                            ).substring(0, 10);
+                                            const [anio, mes, dia] = fechaStr.split("-");
+                                            if (!anio || !mes || !dia) return item.fecha_evento;
+                                            return `${dia}/${mes}/${anio}`;
+                                          })()
+                                        : "S/F"}
+                                    </div>
+                                  </td>
+                                  {/* CELDA: Víctima */}
+                                  {/* CELDA: Víctima */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      overflow: "hidden",
+                                      // --- ESTILOS CON EL COLOR #024885 ---
+                                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
+                                      borderLeft: "3px solid #024885", // Línea lateral con tu color exacto
+                                    }}
+                                  >
+                                    <div style={{ overflow: "hidden" }}>
+                                      <div
+                                        style={{
+                                          ...styles.txtB,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          fontSize: "12px",
+                                        }}
+                                        title={item.nombre_victima || ""}
+                                      >
+                                        {item.victimas && item.victimas.length > 0 && (
+                                          <span
+                                            style={{
+                                              color: "#dc2626",
+                                              fontSize: "0.85em",
+                                              fontWeight: "bold",
+                                              marginRight: "4px",
+                                            }}
+                                          >
+                                            ({item.victimas.length})
+                                          </span>
+                                        )}
+                                        {item.nombre_victima || ""}
+                                      </div>
+                                      <div
+                                        style={{
+                                          ...styles.txtS,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          fontSize: "11px",
+                                        }}
+                                        title={
+                                          item.edad_victima ? `Edad: ${item.edad_victima}` : ""
+                                        }
+                                      >
+                                        {item.edad_victima ? `Edad: ${item.edad_victima}` : ""}
+                                      </div>
+                                    </div>
+                                  </td>
+                
+                                  {/* CELDA: Agresor */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                        borderRight: "1px solid #e2e8f0",
+                                      overflow: "hidden",
+                                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
+                                    }}
+                                  >
+                                    <div style={{ overflow: "hidden" }}>
+                                      <div
+                                        style={{
+                                          ...styles.txtB,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          fontSize: "12px",
+                                        }}
+                                        title={item.nombre_agresor || ""}
+                                      >
+                                        {item.agresores && item.agresores.length > 0 && (
+                                          <span
+                                            style={{
+                                              color: "#dc2626",
+                                              fontSize: "0.85em",
+                                              fontWeight: "bold",
+                                              marginRight: "4px",
+                                            }}
+                                          >
+                                            ({item.agresores.length})
+                                          </span>
+                                        )}
+                                        {item.nombre_agresor || ""}
+                                      </div>
+                                      <div
+                                        style={{
+                                          ...styles.txtS,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          fontSize: "11px",
+                                        }}
+                                        title={`${item.edad_agresor ? `Edad: ${item.edad_agresor}` : ""} ${item.placa_agresor ? `Placa: ${item.placa_agresor}` : ""}`}
+                                      >
+                                        {item.edad_agresor ? `Edad: ${item.edad_agresor}` : ""}{" "}
+                                        {item.placa_agresor
+                                          ? `Placa: ${item.placa_agresor}`
+                                          : ""}
+                                      </div>
+                                    </div>
+                                  </td>
                   {/* CELDA: Resultado */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.txtB,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        fontSize: "12px",
-                      }}
-                      title={item.resultado_des || "---"}
-                    >
-                      {item.resultado_des || "---"}
-                    </div>
-                  </td>
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                       borderLeft: "3px solid #024885", 
+                                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        ...styles.txtB,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        fontSize: "12px",
+                                      }}
+                                      title={item.resultado_des || "---"}
+                                    >
+                                      {item.resultado_des || "---"}
+                                    </div>
+                                  </td>
+                
+                                  {/* CELDA: Consecuencia */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        ...styles.txtB,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        fontSize: "12px",
+                                      }}
+                                      title={item.consecuencia_des || "---"}
+                                    >
+                                      {item.consecuencia_des || "---"}
+                                    </div>
+                                  </td>
+                                  {/* CELDA: Lugar Evento */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
+                                    
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        ...styles.txtB,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        fontSize: "12px",
+                                      }}
+                                      title={item.lugar_des || "---"}
+                                    >
+                                      {item.lugar_des || "---"}
+                                    </div>
+                                  </td>
+                
+                                  {/* CELDA: Medio */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      overflow: "hidden",
+                                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        ...styles.txtB,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        fontSize: "12px",
+                                      }}
+                                      title={item.medio_des || "---"}
+                                    >
+                                      {item.medio_des || "---"}
+                                    </div>
+                                  </td>
+                
+                                
+                
+                                  {/* CELDA: Patrimonio */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
+                                      borderLeft: "3px solid #024885", // Línea lateral con tu color exacto
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        ...styles.txtB,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                
+                                        fontSize: "12px",
+                                      }}
+                                      title={item.patrimonio_real || "---"}
+                                    >
+                                      {item.patrimonio_real || "---"}
+                                    </div>
+                                  </td>
+                
+                                  {/* CELDA: Arresto Ciudadano */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        ...styles.txtB,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        fontSize: "12px",
+                                      }}
+                                      title={item.arresto_ciudadano || "---"}
+                                    >
+                                      {item.arresto_ciudadano || "---"}
+                                    </div>
+                                  </td>
+                
+                                  {/* CELDA: Estado */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      borderRight: "1px solid #e2e8f0",
+                                      borderLeft: "3px solid #024885", // Línea lateral con tu color exacto
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        ...styles.badge,
+                                        display: "inline-block",
+                                        maxWidth: "100%",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        backgroundColor: (() => {
+                                          const estado = String(
+                                            item.estado || "",
+                                          ).toUpperCase();
+                                          if (estado.includes("SIPCOP")) return "#024885";
+                                          if (estado.includes("VERIFICADO")) return "#16a34a";
+                                          if (estado.includes("ANULADO")) return "#dc2626";
+                                          return "#f1f5f9";
+                                        })(),
+                                        color: (() => {
+                                          const estado = String(
+                                            item.estado || "",
+                                          ).toUpperCase();
+                                          if (estado.includes("SIPCOP")) return "white";
+                                          if (estado.includes("VERIFICADO")) return "white";
+                                          if (estado.includes("ANULADO")) return "white";
+                                          return "#475569";
+                                        })(),
+                                        fontWeight: "700",
+                                      }}
+                                      title={item.estado || "---"}
+                                    >
+                                      {item.estado || "---"}
+                                    </span>
+                                  </td>
+                
+                                  {/* Celda Editar */}
+                                  <td
+                                    style={{
+                                      ...styles.td,
+                                      textAlign: "center",
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <button
+                                   onClick={(e) => {
+  e.stopPropagation();
 
-                  {/* CELDA: Consecuencia */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.txtB,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        fontSize: "12px",
-                      }}
-                      title={item.consecuencia_des || "---"}
-                    >
-                      {item.consecuencia_des || "---"}
-                    </div>
-                  </td>
+  // Determinamos si ya tiene víctimas o agresores registrados
+  const tieneVictimasAgresores = (item.victimas?.length || 0) > 0 || (item.agresores?.length || 0) > 0;
 
-                  {/* CELDA: Patrimonio */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
-                      borderLeft: "3px solid #024885", // Línea lateral con tu color exacto
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.txtB,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
+  // Inicializamos el registro asegurando que 'identificado' tenga un valor por defecto real
+  const registroConIdentificado = {
+    ...item,
+    identificado: item.identificado || (tieneVictimasAgresores ? "IDENTIFICADO" : "NO_IDENTIFICADO")
+  };
 
-                        fontSize: "12px",
-                      }}
-                      title={item.patrimonio_real || "---"}
-                    >
-                      {item.patrimonio_real || "---"}
-                    </div>
-                  </td>
+  setRegistroEditar(registroConIdentificado);
 
-                  {/* CELDA: Arresto Ciudadano */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      backgroundColor: "#e8f5fd", // Fondo azul pastel muy suave derivado de tu color
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.txtB,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        fontSize: "12px",
-                      }}
-                      title={item.arresto_ciudadano || "---"}
-                    >
-                      {item.arresto_ciudadano || "---"}
-                    </div>
-                  </td>
-
-                  {/* CELDA: Estado */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      borderRight: "1px solid #e2e8f0",
-                      borderLeft: "3px solid #024885", // Línea lateral con tu color exacto
-                      overflow: "hidden",
-                    }}
-                  >
-                    <span
-                      style={{
-                        ...styles.badge,
-                        display: "inline-block",
-                        maxWidth: "100%",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        backgroundColor: (() => {
-                          const estado = String(
-                            item.estado || "",
-                          ).toUpperCase();
-                          if (estado.includes("SIPCOP")) return "#024885";
-                          if (estado.includes("VERIFICADO")) return "#16a34a";
-                          if (estado.includes("ANULADO")) return "#dc2626";
-                          return "#f1f5f9";
-                        })(),
-                        color: (() => {
-                          const estado = String(
-                            item.estado || "",
-                          ).toUpperCase();
-                          if (estado.includes("SIPCOP")) return "white";
-                          if (estado.includes("VERIFICADO")) return "white";
-                          if (estado.includes("ANULADO")) return "white";
-                          return "#475569";
-                        })(),
-                        fontWeight: "700",
-                      }}
-                      title={item.estado || "---"}
-                    >
-                      {item.estado || "---"}
-                    </span>
-                  </td>
-
-                  {/* Celda Editar */}
-                  <td
-                    style={{
-                      ...styles.td,
-                      textAlign: "center",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRegistroEditar(item);
-                        fetchLugares();
-                        fetchCamposIpcop(String(item.id_ocurrencia));
-                      }}
-                      style={{
-                        background: "#f8fafc",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        padding: "5px 10px",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                      }}
-                      title="Editar registro"
-                    >
-                      <Ionicons name="pencil" size={15} color="#024885" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {datosPaginados.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={14}
-                    style={{
-                      ...styles.td,
-                      textAlign: "center",
-                      color: "#94a3b8",
-                      padding: "40px",
-                    }}
-                  >
-                    No se encontraron registros operativos guardados bajo este
-                    filtro.
-                  </td>
-                </tr>
+  fetchLugares();
+  fetchCamposIpcop(String(item.id_ocurrencia));
+}}
+                                      style={{
+                                        background: "#f8fafc",
+                                        border: "1px solid #cbd5e1",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                        padding: "5px 10px",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                                      }}
+                                      title="Editar registro"
+                                    >
+                                      <Ionicons name="pencil" size={15} color="#024885" />
+                                    </button>
+                                  </td>
+                    
+                  </tr>
+                ))
               )}
             </tbody>
+
+            
           </table>
         </div>
 
-        {/* CONTENEDOR DE PAGINACIÓN */}
+        {/* FOOTER Y CONTADORES */}
         <div style={styles.tableFooterPagination}>
-          {/* Resumen por Estados */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "12px",
-              marginRight: "auto",
-            }}
-          >
-            {/* Selector de registros por página */}
-            <span
-              style={{ fontSize: "10px", color: "#475569", fontWeight: "600" }}
-            >
-              Mostrar:
-            </span>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "12px", marginRight: "auto" }}>
+            <span style={{ fontSize: "11px", color: "#475569", fontWeight: "600" }}>Mostrar:</span>
             <select
               value={registrosPorPagina}
               onChange={(e) => {
@@ -1942,118 +1351,57 @@ const fetchOcurrencias = useCallback(async () => {
               <option value={100}>100 registros</option>
             </select>
 
-            {/* Total encontrados */}
-            <span
-              style={{ fontSize: "12px", color: "#024885", marginLeft: "10px" }}
-            >
-              Total encontrados: <strong>{reportesFiltrados.length}</strong>
+            <span style={{ fontSize: "12px", color: "#024885", marginLeft: "10px" }}>
+              Total encontrados: <strong>{totalRegistrosBD}</strong>
+              {filtrosAplicados.fechaReporteInicio && filtrosAplicados.fechaReporteFin && (
+                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "normal", marginLeft: "6px" }}>
+                  (Reg: {formatearFechaDDMMYYYY(filtrosAplicados.fechaReporteInicio)} al {formatearFechaDDMMYYYY(filtrosAplicados.fechaReporteFin)})
+                </span>
+              )}
+              {filtrosAplicados.fechaEventoInicio && filtrosAplicados.fechaEventoFin && (
+                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "normal", marginLeft: "6px" }}>
+                  (Ocurrencia: {formatearFechaDDMMYYYY(filtrosAplicados.fechaEventoInicio)} al {formatearFechaDDMMYYYY(filtrosAplicados.fechaEventoFin)})
+                </span>
+              )}
             </span>
 
-            {/* Contadores con orden fijo y estilo diferenciado */}
-            <div
-              style={{
-                display: "flex",
-                gap: "6px",
-                flexWrap: "wrap",
-                marginLeft: "8px",
-              }}
-            >
-              {(() => {
-                const conteos = reportesFiltrados.reduce(
-                  (acc, item) => {
-                    const estado = String(
-                      item.estado || "SIN ESTADO",
-                    ).toUpperCase();
-                    acc[estado] = (acc[estado] || 0) + 1;
-                    return acc;
-                  },
-                  {} as Record<string, number>,
+            {/* CONTADORES DE ESTADO */}
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginLeft: "8px" }}>
+              {Object.entries(conteosPorEstado).map(([estado, cantidad]) => {
+                const isPendiente = estado === "PENDIENTE";
+                return (
+                  <span
+                    key={estado}
+                    style={{
+                      fontSize: "11px",
+                      backgroundColor: isPendiente ? "#64748b" : "#024885",
+                      color: "#ffffff",
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    {estado}: <strong>{cantidad}</strong>
+                  </span>
                 );
-
-                const ordenEstados = [
-                  "PENDIENTE",
-                  "SIPCOP",
-                  "VERIFICADO",
-                  "ANULADO",
-                ];
-
-                return Object.keys(conteos)
-                  .sort((a, b) => {
-                    const indexA =
-                      ordenEstados.indexOf(a) === -1
-                        ? 99
-                        : ordenEstados.indexOf(a);
-                    const indexB =
-                      ordenEstados.indexOf(b) === -1
-                        ? 99
-                        : ordenEstados.indexOf(b);
-                    return indexA - indexB;
-                  })
-                  .map((estado) => {
-                    const cantidad = conteos[estado];
-
-                    // Estilo condicional: PENDIENTE resalta, los otros corporativos
-                    const isPendiente = estado === "PENDIENTE";
-
-                    return (
-                      <span
-                        key={estado}
-                        style={{
-                          fontSize: "12px",
-                          // Naranja para pendiente, Azul corporativo para los demás
-                          backgroundColor: isPendiente
-                            ? "#46464688"
-                            : "#024885",
-                          color: "#ffffff",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          fontWeight: "600",
-                          border: "1px solid rgba(0,0,0,0.1)",
-                        }}
-                      >
-                        {estado}: <strong>{cantidad}</strong>
-                      </span>
-                    );
-                  });
-              })()}
+              })}
             </div>
           </div>
 
           <div style={styles.paginationFlex}>
-            <button
-              disabled={paginaActual === 1}
-              onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))}
-              style={styles.btnPageNew}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={15}
-                color={paginaActual === 1 ? "#cbd5e1" : "#334155"}
-              />
+            <button disabled={paginaActual === 1} onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))} style={styles.btnPageNew}>
+              <Ionicons name="chevron-back" size={15} color={paginaActual === 1 ? "#cbd5e1" : "#334155"} />
             </button>
-
-            <div style={styles.pageInfoWrapper}>
-              Página {paginaActual} de {totalPaginas}
-            </div>
-
-            <button
-              disabled={paginaActual >= totalPaginas}
-              onClick={() =>
-                setPaginaActual((p) => Math.min(p + 1, totalPaginas))
-              }
-              style={styles.btnPageNew}
-            >
-              <Ionicons
-                name="chevron-forward"
-                size={15}
-                color={paginaActual >= totalPaginas ? "#cbd5e1" : "#334155"}
-              />
+            <span style={styles.pageInfoWrapper}>Página {paginaActual} de {totalPaginas}</span>
+            <button disabled={paginaActual >= totalPaginas} onClick={() => setPaginaActual((p) => Math.min(p + 1, totalPaginas))} style={styles.btnPageNew}>
+              <Ionicons name="chevron-forward" size={15} color={paginaActual >= totalPaginas ? "#cbd5e1" : "#334155"} />
             </button>
           </div>
         </div>
       </div>
 
-      {detalleSeleccionado && (
+      {/* MODAL DETALLE */}
+     {detalleSeleccionado && (
         <div
           style={styles.overlay}
           onClick={() => setDetalleSeleccionado(null)}
@@ -2268,7 +1616,7 @@ const fetchOcurrencias = useCallback(async () => {
                     </span>
                   </div>
                   <div style={styles.infoRowGrid}>
-                    <span style={styles.infoLabel}>Lugar (Des):</span>
+                    <span style={styles.infoLabel}>Lugar:</span>
                     <span style={styles.infoValue}>
                       {detalleSeleccionado.lugar_des || "---"}
                     </span>
@@ -2325,396 +1673,468 @@ const fetchOcurrencias = useCallback(async () => {
                   </div>
                 </div>
 
-                {/* 5. VÍCTIMA (Columna Izquierda dentro de Involucrados o bloque independiente a la izquierda) */}
+                {/* 5. SECCIÓN ORDENADA DE VÍCTIMAS Y AGRESORES (Ya estaba en 2 columnas) */}
                 <div
                   style={{
-                    padding: "12px",
+                    gridColumn: "span 2",
+                    padding: "16px",
                     backgroundColor: "#f8fafc",
                     border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
+                    borderRadius: "10px",
                   }}
                 >
-                  <span
+                  <strong
                     style={{
-                      display: "block",
                       color: "#024885",
-                      fontWeight: "700",
-                      fontSize: "12px",
-                      marginBottom: "10px",
-                      borderBottom: "2px solid #f1f5f9",
-                      paddingBottom: "6px",
-                      letterSpacing: "0.5px",
+                      fontSize: "13px",
+                      display: "block",
+                      marginBottom: "12px",
                     }}
                   >
-                    VICTIMA(S)
-                  </span>
+                    Información de Involucrados:
+                  </strong>
 
                   <div
                     style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "8px",
-                      fontSize: "12px",
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "14px",
                     }}
                   >
-                    <div>
+                    {/* Bloque Víctima */}
+                    <div
+                      style={{
+                        backgroundColor: "#ffffff",
+                        padding: "12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                      }}
+                    >
                       <span
                         style={{
-                          color: "#64748b",
-                          fontWeight: "600",
                           display: "block",
-                          marginBottom: "2px",
+                          color: "#024885",
+                          fontWeight: "700",
+                          fontSize: "12px",
+                          marginBottom: "10px",
+                          borderBottom: "2px solid #f1f5f9",
+                          paddingBottom: "6px",
+                          letterSpacing: "0.5px",
                         }}
                       >
-                        Nombres:
+                        VICTIMA(S)
                       </span>
-                      <span
-                        style={{
-                          color: "#1e293b",
-                          whiteSpace: "pre-line",
-                          display: "block",
-                          paddingLeft: "6px",
-                          borderLeft: "2px solid #e2e8f0",
-                        }}
-                      >
-                        {detalleSeleccionado.victimas_nombres || "---"}
-                      </span>
-                    </div>
-                    <div>
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontWeight: "600",
-                          display: "block",
-                          marginBottom: "2px",
-                        }}
-                      >
-                        Edad(es):
-                      </span>
-                      <span
-                        style={{
-                          color: "#1e293b",
-                          whiteSpace: "pre-line",
-                          display: "block",
-                          paddingLeft: "6px",
-                          borderLeft: "2px solid #e2e8f0",
-                        }}
-                      >
-                        {detalleSeleccionado.victimas_edades || "---"}
-                      </span>
-                    </div>
-                    <div>
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontWeight: "600",
-                          display: "block",
-                          marginBottom: "2px",
-                        }}
-                      >
-                        Placa(s):
-                      </span>
-                      <span
-                        style={{
-                          color: "#1e293b",
-                          whiteSpace: "pre-line",
-                          display: "block",
-                          paddingLeft: "6px",
-                          borderLeft: "2px solid #e2e8f0",
-                        }}
-                      >
-                        {detalleSeleccionado.victimas_placas || "---"}
-                      </span>
-                    </div>
-                    <div>
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontWeight: "600",
-                          display: "block",
-                          marginBottom: "2px",
-                        }}
-                      >
-                        Relación c/ Agresor:
-                      </span>
-                      <span
-                        style={{
-                          color: "#1e293b",
-                          whiteSpace: "pre-line",
-                          display: "block",
-                          paddingLeft: "6px",
-                          borderLeft: "2px solid #e2e8f0",
-                        }}
-                      >
-                        {detalleSeleccionado.victimas_relacion || "---"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 6. AGRESOR (Columna Derecha directa a la par de Víctimas) */}
-                <div
-                  style={{
-                    padding: "12px",
-                    backgroundColor: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "block",
-                      color: "#024885",
-                      fontWeight: "700",
-                      fontSize: "12px",
-                      marginBottom: "10px",
-                      borderBottom: "2px solid #f1f5f9",
-                      paddingBottom: "6px",
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    AGRESOR(ES)
-                  </span>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "8px",
-                      fontSize: "12px",
-                    }}
-                  >
-                    <div>
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontWeight: "600",
-                          display: "block",
-                          marginBottom: "2px",
-                        }}
-                      >
-                        Nombres:
-                      </span>
-                      <span
-                        style={{
-                          color: "#1e293b",
-                          whiteSpace: "pre-line",
-                          display: "block",
-                          paddingLeft: "6px",
-                          borderLeft: "2px solid #e2e8f0",
-                        }}
-                      >
-                        {detalleSeleccionado.agresores_nombres || "---"}
-                      </span>
-                    </div>
-                    <div>
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontWeight: "600",
-                          display: "block",
-                          marginBottom: "2px",
-                        }}
-                      >
-                        Edad(es):
-                      </span>
-                      <span
-                        style={{
-                          color: "#1e293b",
-                          whiteSpace: "pre-line",
-                          display: "block",
-                          paddingLeft: "6px",
-                          borderLeft: "2px solid #e2e8f0",
-                        }}
-                      >
-                        {detalleSeleccionado.agresores_edades || "---"}
-                      </span>
-                    </div>
-                    <div>
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontWeight: "600",
-                          display: "block",
-                          marginBottom: "2px",
-                        }}
-                      >
-                        Placa(s):
-                      </span>
-                      <span
-                        style={{
-                          color: "#1e293b",
-                          whiteSpace: "pre-line",
-                          display: "block",
-                          paddingLeft: "6px",
-                          borderLeft: "2px solid #e2e8f0",
-                        }}
-                      >
-                        {detalleSeleccionado.agresores_placas || "---"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* DESCRIPCIÓN / SUCESO */}
-              <div style={{ marginTop: "16px" }}>
-                <strong style={styles.sectionTitle}>
-                  Descripción / Suceso:
-                </strong>
-                <div
-                  style={{
-                    ...styles.descBox,
-                    width: "100%",
-                    flex: 1,
-                    padding: "12px",
-                    fontSize: "13px",
-                    color: "#1e293b",
-                    overflowY: "auto",
-                    boxSizing: "border-box",
-                    whiteSpace: "pre-line",
-                  }}
-                >
-                  {detalleSeleccionado.ocurrencia_descripcion ||
-                    "Sin descripción detallada."}
-                </div>
-              </div>
-
-              {/* EVIDENCIAS FOTOGRÁFICAS */}
-              {(() => {
-                let fotosArray: any[] = [];
-                try {
-                  const itemData = detalleSeleccionado as any;
-                  const fotosVal = itemData.fotos_json;
-                  fotosArray = fotosVal
-                    ? typeof fotosVal === "string"
-                      ? JSON.parse(fotosVal)
-                      : fotosVal
-                    : itemData.lista_fotos ||
-                      itemData.fotos ||
-                      [
-                        itemData.foto_1,
-                        itemData.foto_2,
-                        itemData.foto_3,
-                        itemData.foto_4,
-                      ].filter(Boolean);
-                } catch (e) {
-                  fotosArray = [
-                    detalleSeleccionado.foto_1,
-                    detalleSeleccionado.foto_2,
-                    detalleSeleccionado.foto_3,
-                    detalleSeleccionado.foto_4,
-                  ].filter(Boolean);
-                }
-
-                if (Array.isArray(fotosArray) && fotosArray.length > 0) {
-                  return (
-                    <div style={{ marginTop: "16px" }}>
-                      <strong style={styles.sectionTitle}>
-                        Evidencias Adjuntas ({fotosArray.length}):
-                      </strong>
 
                       <div
                         style={{
                           display: "flex",
-                          flexWrap: "wrap",
+                          flexDirection: "column",
                           gap: "8px",
-                          marginTop: "8px",
+                          fontSize: "12px",
                         }}
                       >
-                        {fotosArray.map((foto: any, idx: number) => {
-                          const urlFoto =
-                            typeof foto === "string"
-                              ? foto
-                              : foto?.url_imagen || foto?.url || "";
-
-                          if (!urlFoto) return null;
-
-                          return (
-                            <div
-                              key={idx}
-                              style={{
-                                position: "relative",
-                                display: "inline-block",
-                              }}
-                            >
-                              <a
-                                href={urlFoto}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                  padding: "6px 12px",
-                                  backgroundColor: "#f1f5f9",
-                                  border: "1px solid #cbd5e1",
-                                  borderRadius: "6px",
-                                  color: "#024885",
-                                  fontSize: "12px",
-                                  fontWeight: "600",
-                                  textDecoration: "none",
-                                  cursor: "pointer",
-                                }}
-                                className="link-evidencia-foto"
-                              >
-                                <span>📷 Ver Foto {idx + 1}</span>
-                              </a>
-
-                              <div
-                                className="tooltip-miniatura"
-                                style={{
-                                  display: "none",
-                                  position: "absolute",
-                                  bottom: "105%",
-                                  left: "50%",
-                                  transform: "translateX(-50%)",
-                                  padding: "4px",
-                                  background: "#fff",
-                                  border: "1px solid #cbd5e1",
-                                  borderRadius: "6px",
-                                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                                  zIndex: 100,
-                                  width: "130px",
-                                  height: "130px",
-                                }}
-                              >
-                                <img
-                                  src={urlFoto}
-                                  style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
-                                    borderRadius: "4px",
-                                  }}
-                                  alt={`Preview ${idx + 1}`}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
+                        <div>
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontWeight: "600",
+                              display: "block",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            Nombres:
+                          </span>
+                          <span
+                            style={{
+                              color: "#1e293b",
+                              whiteSpace: "pre-line",
+                              display: "block",
+                              paddingLeft: "6px",
+                              borderLeft: "2px solid #e2e8f0",
+                            }}
+                          >
+                            {detalleSeleccionado.victimas_nombres || "---"}
+                          </span>
+                        </div>
+                        <div>
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontWeight: "600",
+                              display: "block",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            Edad(es):
+                          </span>
+                          <span
+                            style={{
+                              color: "#1e293b",
+                              whiteSpace: "pre-line",
+                              display: "block",
+                              paddingLeft: "6px",
+                              borderLeft: "2px solid #e2e8f0",
+                            }}
+                          >
+                            {detalleSeleccionado.victimas_edades || "---"}
+                          </span>
+                        </div>
+                        <div>
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontWeight: "600",
+                              display: "block",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            Placa(s):
+                          </span>
+                          <span
+                            style={{
+                              color: "#1e293b",
+                              whiteSpace: "pre-line",
+                              display: "block",
+                              paddingLeft: "6px",
+                              borderLeft: "2px solid #e2e8f0",
+                            }}
+                          >
+                            {detalleSeleccionado.victimas_placas || "---"}
+                          </span>
+                        </div>
+                        <div>
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontWeight: "600",
+                              display: "block",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            Relación c/ Agresor:
+                          </span>
+                          <span
+                            style={{
+                              color: "#1e293b",
+                              whiteSpace: "pre-line",
+                              display: "block",
+                              paddingLeft: "6px",
+                              borderLeft: "2px solid #e2e8f0",
+                            }}
+                          >
+                            {detalleSeleccionado.victimas_relacion || "---"}
+                          </span>
+                        </div>
                       </div>
-
-                      <style>{`
-                  .link-evidencia-foto:hover {
-                    background-color: #e2e8f0 !important;
-                  }
-                  .link-evidencia-foto:hover + .tooltip-miniatura,
-                  .tooltip-miniatura:hover {
-                    display: block !important;
-                  }
-                `}</style>
                     </div>
-                  );
-                }
-                return null;
-              })()}
+
+                    {/* Bloque Agresor */}
+                    <div
+                      style={{
+                        backgroundColor: "#ffffff",
+                        padding: "12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "block",
+                          color: "#024885",
+                          fontWeight: "700",
+                          fontSize: "12px",
+                          marginBottom: "10px",
+                          borderBottom: "2px solid #f1f5f9",
+                          paddingBottom: "6px",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        AGRESOR(ES)
+                      </span>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "8px",
+                          fontSize: "12px",
+                        }}
+                      >
+                        <div>
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontWeight: "600",
+                              display: "block",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            Nombres:
+                          </span>
+                          <span
+                            style={{
+                              color: "#1e293b",
+                              whiteSpace: "pre-line",
+                              display: "block",
+                              paddingLeft: "6px",
+                              borderLeft: "2px solid #e2e8f0",
+                            }}
+                          >
+                            {detalleSeleccionado.agresores_nombres || "---"}
+                          </span>
+                        </div>
+                        <div>
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontWeight: "600",
+                              display: "block",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            Edad(es):
+                          </span>
+                          <span
+                            style={{
+                              color: "#1e293b",
+                              whiteSpace: "pre-line",
+                              display: "block",
+                              paddingLeft: "6px",
+                              borderLeft: "2px solid #e2e8f0",
+                            }}
+                          >
+                            {detalleSeleccionado.agresores_edades || "---"}
+                          </span>
+                        </div>
+                        <div>
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontWeight: "600",
+                              display: "block",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            Placa(s):
+                          </span>
+                          <span
+                            style={{
+                              color: "#1e293b",
+                              whiteSpace: "pre-line",
+                              display: "block",
+                              paddingLeft: "6px",
+                              borderLeft: "2px solid #e2e8f0",
+                            }}
+                          >
+                            {detalleSeleccionado.agresores_placas || "---"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+ {/* datos im */}
+                <div
+                  style={{
+                    gridColumn: "span 2",
+                    padding: "12px",
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <strong
+                    style={{
+                      color: "#024885",
+                      fontSize: "13px",
+                      display: "block",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    Datos Importantes:
+                  </strong>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "12px",
+                    }}
+                  >
+                   
+                    <div style={styles.infoRowGrid}>
+               
+                      <span style={styles.infoValue}>
+                       {detalleSeleccionado.ocurrencia_descripcion ||
+                    "Sin descripción detallada."}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+ {/*fotos */}
+              <div
+  style={{
+    gridColumn: "span 2",
+    padding: "16px",
+    backgroundColor: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: "12px",
+    boxShadow: "0 1px 3px 0 rgb(0 0 0 / 0.05)",
+  }}
+>
+  
+
+  {(() => {
+    let fotosArray: any[] = [];
+    try {
+      const itemData = detalleSeleccionado as any;
+      const fotosVal = itemData.fotos_json;
+      fotosArray = fotosVal
+        ? typeof fotosVal === "string"
+          ? JSON.parse(fotosVal)
+          : fotosVal
+        : itemData.lista_fotos ||
+          itemData.fotos ||
+          [
+            itemData.foto_1,
+            itemData.foto_2,
+            itemData.foto_3,
+            itemData.foto_4,
+          ].filter(Boolean);
+    } catch (e) {
+      fotosArray = [
+        detalleSeleccionado.foto_1,
+        detalleSeleccionado.foto_2,
+        detalleSeleccionado.foto_3,
+        detalleSeleccionado.foto_4,
+      ].filter(Boolean);
+    }
+
+    if (Array.isArray(fotosArray) && fotosArray.length > 0) {
+      return (
+        <div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "10px",
+            }}
+          >
+            {fotosArray.map((foto: any, idx: number) => {
+              const urlFoto =
+                typeof foto === "string"
+                  ? foto
+                  : foto?.url_imagen || foto?.url || "";
+
+              if (!urlFoto) return null;
+
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    position: "relative",
+                    display: "inline-block",
+                  }}
+                >
+                  {/* BOTÓN / TARJETA DE EVIDENCIA */}
+                  <a
+                    href={urlFoto}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 14px",
+                      backgroundColor: "#f8fafc",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "8px",
+                      color: "#024885",
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      textDecoration: "none",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
+                    }}
+                    className="link-evidencia-foto"
+                  >
+                    <Ionicons name="camera-outline" size={14} color="#024885" />
+                    <span>Ver Foto {idx + 1}</span>
+                    <Ionicons name="open-outline" size={12} color="#64748b"  />
+                  </a>
+
+                  {/* TOOLTIP CON MINIATURA DE LA FOTO */}
+                  <div
+                    className="tooltip-miniatura"
+                    style={{
+                      display: "none",
+                      position: "absolute",
+                      bottom: "115%",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      padding: "6px",
+                      background: "#ffffff",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "10px",
+                      boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.2)",
+                      zIndex: 100,
+                      width: "140px",
+                      height: "140px",
+                    }}
+                  >
+                    <img
+                      src={urlFoto}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        borderRadius: "6px",
+                      }}
+                      alt={`Preview ${idx + 1}`}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <style>{`
+            .link-evidencia-foto:hover {
+              background-color: #f1f5f9 !important;
+              border-color: #024885 !important;
+              color: #024885 !important;
+            }
+            .link-evidencia-foto:hover + .tooltip-miniatura,
+            .tooltip-miniatura:hover {
+              display: block !important;
+            }
+          `}</style>
+        </div>
+      );
+    }
+
+    return (
+      <span style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>
+        No hay archivos adjuntos registrados para esta ocurrencia.
+      </span>
+    );
+  })()}
+</div>
+                
+              </div>
+
+        
+              
             </div>
           </div>
         </div>
       )}
-      {/* Debajo de donde cierras el modal de detalle, añade esto */}
-      {registroEditar && (
+      {/* MODAL EDICIÓN */}
+       {registroEditar && (
         <div
           style={{
             ...styles.overlay,
@@ -3749,7 +3169,7 @@ const fetchOcurrencias = useCallback(async () => {
                 </div>
 
                 {/* SECCIONES CONDICIONALES */}
-                {(() => {
+               {(() => {
                   const tieneRegistros =
                     (registroEditar?.victimas?.length || 0) > 0 ||
                     (registroEditar?.agresores?.length || 0) > 0;
@@ -4378,8 +3798,7 @@ const fetchOcurrencias = useCallback(async () => {
                       marginBottom: "4px",
                     }}
                   >
-                    CONTRA EL PATRIMONIO (VALOR ACTUAL:{" "}
-                    {registroEditar?.patrimonio_real ?? "NINGUNO"})
+                    CONTRA EL PATRIMONIO 
                   </label>
                   <div
                     style={{
@@ -4607,7 +4026,7 @@ const fetchOcurrencias = useCallback(async () => {
                       cursor: "pointer",
                       fontWeight: "bold",
                     }}
-                    onClick={() => {
+                      onClick={() => {
                       // --- FUNCIÓN DE VALIDACIÓN ANTES DE ENVIAR ---
                       if (!(registroEditar as any)?.identificado) {
                         alert(
@@ -4670,7 +4089,7 @@ const fetchOcurrencias = useCallback(async () => {
           </div>
         </div>
       )}
-      {/* MODAL DE CONFIRMACIÓN */}
+        {/* MODAL DE CONFIRMACIÓN */}
       {modalConfirmacionOpen && (
         <div
           style={{
@@ -4761,478 +4180,47 @@ const fetchOcurrencias = useCallback(async () => {
   );
 }
 
-// ESTILOS CON EL NUEVO DISEÑO RESPONSIVO Y DESPLEGABLE HACIA LA DERECHA
 const styles: Record<string, React.CSSProperties | any> = {
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "#FFFFFF",
-    padding: 30,
-    borderRadius: 20,
-    alignItems: "center",
-    width: "85%",
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  progressTitle: { fontSize: 16, fontWeight: "bold", marginBottom: 15 },
-  progressBarBackground: {
-    width: "100%",
-    height: 10,
-    backgroundColor: "#eee",
-    borderRadius: 5,
-    overflow: "hidden",
-  },
-  progressBarFill: { height: "100%", backgroundColor: "#024885" },
-  progressPercentage: {
-    marginTop: 10,
-    fontSize: 12,
-    color: "#666",
-    fontWeight: "bold",
-  },
-  container: {
-    padding: "24px",
-    backgroundColor: "#f8fafc",
-    minHeight: "100vh",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "16px",
-    marginBottom: "24px",
-  },
-  card: {
-    padding: "18px",
-    borderRadius: "12px",
-    color: "white",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    border: "none",
-    cursor: "pointer",
-    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-  },
-  cardLab: {
-    fontSize: "10px",
-    fontWeight: "700",
-    marginTop: "8px",
-    letterSpacing: "0.5px",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "20px",
-    flexWrap: "wrap",
-    gap: "15px",
-  },
-  tabs: {
-    display: "flex",
-    gap: "4px",
-    backgroundColor: "#e2e8f0",
-    padding: "4px",
-    borderRadius: "8px",
-  },
-  tab: {
-    border: "none",
-    padding: "8px 16px",
-    cursor: "pointer",
-    borderRadius: "6px",
-    backgroundColor: "transparent",
-    color: "#024885",
-    fontWeight: "600",
-    fontSize: "13px",
-    transition: "all 0.2s",
-  },
-  tabActive: {
-    border: "none",
-    padding: "8px 16px",
-    cursor: "pointer",
-    borderRadius: "6px",
-    backgroundColor: MJM_BLUE,
-    color: "white",
-    fontWeight: "600",
-    fontSize: "13px",
-    transition: "all 0.2s",
-  },
-  btnExport: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "8px 14px",
-    borderRadius: "6px",
-    border: "none",
-    color: "white",
-    fontSize: "13px",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
-  tableCard: {
-    backgroundColor: "white",
-    borderRadius: "12px",
-    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.05)",
-    border: "1px solid #e2e8f0",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-    position: "relative",
-    // SOLUCIÓN: Fijamos la altura de la tarjeta para controlar el espacio de la pantalla
-    height: "800px",
-  },
-  tableScrollContainer: {
-    overflowX: "auto",
-    overflowY: "auto",
-    // Ocupa todo el espacio disponible entre la cabecera y el paginador
-    flex: 1,
-  },
-  table: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" },
-  thead: {
-    backgroundColor: "#024885", // 
-    borderBottom: "2px solid #013663",
-    textAlign: "left",
-    position: "sticky",
-    top: 0,
-    zIndex: 10,
-  },
-  th: {
-    padding: "14px 16px",
-    fontSize: "10px", // Enfoque profesional ligeramente más grande
-    fontWeight: "700",
-    color: "#ffffff", // <-- Texto blanco para que contraste con el fondo azul
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-  },
-  td: {
-    padding: "14px 16px",
-    borderBottom: "1px solid #e2e8f0",
-    verticalAlign: "middle",
-    overflow: "hidden",
-  },
-  tr: { cursor: "pointer", transition: "background-color 0.2s" },
+  container: { padding: "24px", backgroundColor: "#f8fafc", minHeight: "100vh" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" },
+  
+  filterCard: { backgroundColor: "white", padding: "16px", borderRadius: "12px", marginBottom: "16px", border: "1px solid #e2e8f0" },
+  filterRow: { display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" },
+  filterLabel: { fontSize: "10px", fontWeight: "700", color: "#475569", display: "block", marginBottom: "4px" },
+  inputDate: { padding: "6px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "11px" },
+  
+  btnSearch: { padding: "7px 14px", backgroundColor: MJM_BLUE, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "11px", fontWeight: "600", display: "inline-flex", alignItems: "center", gap: "5px" },
+  btnClearFilters: { padding: "7px 14px", backgroundColor: "#ef4444", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "11px", fontWeight: "600", display: "inline-flex", alignItems: "center", gap: "5px" },
 
-  celdaTruncadaContainer: {
-    display: "block",
-    width: "100%",
-    maxWidth: "100%",
-    overflow: "hidden",
-    boxSizing: "border-box",
-  },
-  txtB: {
-    fontSize: "13px",
-    fontWeight: "600",
-    color: "#1e293b",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    display: "block",
-    width: "100%",
-  },
-  txtS: {
-    fontSize: "11px",
-    color: "#024885",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    display: "block",
-    width: "100%",
-  },
-
-  img: {
-    width: "42px",
-    height: "42px",
-    borderRadius: "8px",
-    objectFit: "cover",
-    border: "1px solid #cbd5e1",
-  },
-  photoCountBadge: {
-    position: "absolute",
-    bottom: "-2px",
-    right: "-2px",
-    backgroundColor: "#1e293b",
-    color: "white",
-    fontSize: "9px",
-    fontWeight: "bold",
-    padding: "1px 4px",
-    borderRadius: "6px",
-    border: "1px solid white",
-  },
-
-  tableFooterPagination: {
-    display: "flex",
-    justifyContent: "space-between", // <-- Cambiado de flex-end a space-between para separar los extremos
-    alignItems: "center",
-    padding: "12px 20px",
-    borderTop: "1px solid #e2e8f0",
-    backgroundColor: "#ffffff",
-    position: "relative",
-    flexShrink: 0,
-  },
-  selectRows: {
-    padding: "6px 10px",
-    borderRadius: "6px",
-    border: "1px solid #e2e8f0",
-    backgroundColor: "#ffffff",
-    color: "#334155",
-    fontSize: "10px",
-    fontWeight: "600",
-    outline: "none",
-    cursor: "pointer",
-  },
-  paginationFlex: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    backgroundColor: "transparent", // <-- Quitamos el fondo agregado para que respire con el footer blanco
-  },
-  btnPageNew: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "32px",
-    height: "32px",
-    borderRadius: "6px",
-    border: "none",
-    backgroundColor: "#ffffff",
-    cursor: "pointer",
-    boxShadow: "0 1px 2px rgb(0 0 0 / 0.05)",
-  },
-  pageInfoWrapper: {
-    fontSize: "10px",
-    fontWeight: "700",
-    color: "#475569",
-    width: "110px",
-    textAlign: "center",
-    display: "inline-block",
-    userSelect: "none",
-  },
-
-  overlay: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 1000,
-    backdropFilter: "blur(3px)",
-  },
-  modalDetail: {
-    backgroundColor: "white",
-    padding: "24px",
-    borderRadius: "16px",
-    width: "720px",
-    height: "580px",
-    display: "flex",
-    flexDirection: "column",
-    boxShadow: "0 25px 50px -12px rgb(0 0 0 / 0.25)",
-    overflow: "hidden",
-  },
-  modalHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottom: "1px solid #e2e8f0",
-    paddingBottom: "14px",
-    flexShrink: 0,
-  },
-  modalBodyScrollable: {
-    flex: 1,
-    overflowY: "auto",
-    marginTop: "14px",
-    paddingRight: "4px",
-  },
-  btnClose: {
-    background: "none",
-    border: "none",
-    fontSize: "20px",
-    cursor: "pointer",
-    color: "#94a3b8",
-  },
-  modalGridDobleFila: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "0px 24px",
-  },
-  infoRowGrid: {
-    display: "flex",
-    flexDirection: "row",
-    padding: "10px 0",
-    borderBottom: "1px solid #f1f5f9",
-    fontSize: "13px",
-    alignItems: "center",
-  },
-  infoLabel: {
-    width: "110px",
-    flexShrink: 0,
-    fontWeight: "700",
-    color: "#475569",
-  },
-  infoValue: {
-    color: "#1e293b",
-    fontWeight: "500",
-    wordBreak: "break-word",
-    whiteSpace: "normal",
-  },
-  sectionTitle: {
-    fontSize: "11px",
-    color: "#024885",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    display: "block",
-    marginBottom: "6px",
-  },
-  descBox: {
-    color: "#334155",
-    fontSize: "13px",
-    backgroundColor: "#f8fafc",
-    padding: "12px",
-    borderRadius: "8px",
-    border: "1px solid #e2e8f0",
-    lineHeight: "1.5",
-    margin: 0,
-  },
-  galleryGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-    gap: "10px",
-  },
-  badge: {
-    padding: "3px 8px",
-    borderRadius: "12px",
-    color: "white",
-    fontSize: "10px",
-    fontWeight: "700",
-    display: "inline-block",
-    marginTop: "4px",
-  },
-
-  imgGalleryItem: {
-    width: "100%",
-    height: "95px",
-    borderRadius: "8px",
-    objectFit: "cover",
-    border: "1px solid #cbd5e1",
-    backgroundColor: "#f8fafc",
-  },
-
-  // Panel de Filtros Actualizado
-  filterCard: {
-    backgroundColor: "white",
-    padding: "16px 20px",
-    borderRadius: "12px",
-    marginBottom: "16px",
-    boxShadow: "0 1px 3px rgb(0 0 0 / 0.1)",
-    border: "1px solid #e2e8f0",
-  },
-  filterRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "16px",
-    flexWrap: "wrap",
-  },
-  dateGroup: { display: "flex", alignItems: "center", gap: "8px" },
-  filterRightContainer: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    marginLeft: "auto",
-    flexWrap: "wrap",
-  },
-  filterLabel: {
-    fontSize: "10px",
-    fontWeight: "700",
-    color: "#475569",
-    textTransform: "uppercase",
-  },
-  inputDate: {
-    padding: "6px 10px",
-    borderRadius: "6px",
-    border: "1px solid #cbd5e1",
-    fontSize: "10px",
-    color: "#1e293b",
-    outline: "none",
-  },
-  btnClearFilters: {
-    padding: "6px 12px",
-    backgroundColor: "#ef4444",
-    color: "white",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "10px",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
-
-  // Estilos del Desplegable (Dropdown) personalizado colocado a la derecha
   dropdownContainer: { position: "relative", display: "inline-block" },
-  dropdownButton: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "10px",
-    padding: "7px 12px",
-    backgroundColor: "#ffffff",
-    border: "1px solid #cbd5e1",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "10px",
-    fontWeight: "600",
-    color: "#334155",
-    minWidth: "180px",
-  },
-  dropdownMenu: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    right: 0, // Despliega ordenadamente alineado a la derecha
-    backgroundColor: "#ffffff",
-    border: "1px solid #cbd5e1",
-    borderRadius: "8px",
-    boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
-    zIndex: 100,
-    width: "240px",
-    padding: "8px",
-  },
-  dropdownHeaderMenu: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: "6px",
-    borderBottom: "1px solid #f1f5f9",
-    marginBottom: "6px",
-  },
-  btnClearSelection: {
-    background: "none",
-    border: "none",
-    color: "#ef4444",
-    fontSize: "11px",
-    fontWeight: "bold",
-    cursor: "pointer",
-  },
-  dropdownListScroll: {
-    maxHeight: "160px",
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-  },
-  dropdownCheckboxItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "4px 6px",
-    borderRadius: "4px",
-    cursor: "pointer",
-    transition: "background 0.2s",
-  },
+  dropdownButton: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "7px 12px", backgroundColor: "#fff", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", fontSize: "11px", fontWeight: "600", color: "#334155" },
+  dropdownMenu: { position: "absolute", top: "calc(100% + 4px)", left: 0, backgroundColor: "#fff", border: "1px solid #cbd5e1", borderRadius: "8px", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)", zIndex: 100, width: "220px", padding: "8px" },
+  dropdownHeaderMenu: { display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "6px", borderBottom: "1px solid #f1f5f9", marginBottom: "6px" },
+  btnClearSelection: { background: "none", border: "none", color: "#ef4444", fontSize: "10px", fontWeight: "bold", cursor: "pointer" },
+  dropdownListScroll: { maxHeight: "150px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "4px" },
+  dropdownCheckboxItem: { display: "flex", alignItems: "center", gap: "8px", padding: "4px", borderRadius: "4px", cursor: "pointer" },
+
+  tableCard: { backgroundColor: "white", borderRadius: "12px", border: "1px solid #e2e8f0", overflow: "hidden" },
+  tableScrollContainer: { overflowX: "auto", maxHeight: "65vh" },
+  table: { width: "100%", borderCollapse: "collapse" },
+  thead: { backgroundColor: "#024885", color: "white", position: "sticky", top: 0, zIndex: 10 },
+  th: { padding: "12px 14px", fontSize: "10px", textAlign: "left", fontWeight: "700", textTransform: "uppercase" },
+  td: { padding: "12px 14px", borderBottom: "1px solid #e2e8f0", fontSize: "12px", color: "#1e293b" },
+  tr: { cursor: "pointer", transition: "background-color 0.15s" },
+  btnAction: { background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", padding: "5px 8px", display: "inline-flex", alignItems: "center", justifyContent: "center" },
+
+  tableFooterPagination: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 20px", borderTop: "1px solid #e2e8f0", backgroundColor: "#fff", flexWrap: "wrap", gap: "10px" },
+  selectRows: { padding: "6px", borderRadius: "6px", border: "1px solid #cbd5e1", backgroundColor: "#fff", fontSize: "11px", fontWeight: "600" },
+  paginationFlex: { display: "flex", alignItems: "center", gap: "6px" },
+  btnPageNew: { width: "32px", height: "32px", borderRadius: "6px", border: "none", backgroundColor: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" },
+  pageInfoWrapper: { fontSize: "12px", fontWeight: "700", color: "#475569" },
+
+  overlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15, 23, 42, 0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000 },
+  modalDetail: { backgroundColor: "white", padding: "24px", borderRadius: "16px", width: "650px", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 50px -12px rgb(0 0 0 / 0.25)", overflow: "hidden" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px" },
+  modalBodyScrollable: { flex: 1, overflowY: "auto", marginTop: "14px" },
+  btnClose: { background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "#94a3b8" },
+  infoRowGrid: { display: "flex", padding: "8px 0", borderBottom: "1px solid #f1f5f9", fontSize: "13px" },
+  infoLabel: { width: "130px", fontWeight: "700", color: "#475569" },
+  infoValue: { color: "#1e293b", flex: 1 },
 };

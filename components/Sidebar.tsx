@@ -386,10 +386,10 @@ const handleToggleSection = (sectionLabel: string) => {
           >
             <MenuOption
               icon="location-outline"
-              label="Registro"
-              isActive={activeRoute === "registros"}
+              label="Rol de Servicio"
+              isActive={activeRoute === "rolservicio"}
               isExpanded={true}
-              onPress={() => navigateTo("registros")}
+              onPress={() => navigateTo("rolservicio")}
               isSubItem
             />
             <MenuOption

@@ -316,7 +316,7 @@ export default function ReportesWebScreen() {
 const fetchOcurrencias = useCallback(async () => {
     try {
       const response = await fetch(
-        `${API_URL}/ocurrencias/listar/exportarformato`, // 👈 Cambiado a backticks (``)
+        `${API_URL}/ocurrencias/listar/exportarformato`, 
       );
       const data = await response.json();
       setReportesCompletos(data || []);

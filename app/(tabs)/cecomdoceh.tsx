@@ -678,7 +678,7 @@ console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
           onClick={() => setModalInsertOpen("operador")}
           style={{ ...styles.card, backgroundColor: MJM_BLUE }}
         >
-          <Ionicons name="share-social" size={26} color="white" />
+          <Ionicons name="megaphone" size={26} color="white" />
           <div style={styles.cardLab}>RADIOPERADOR</div>
         </button>
       </div>
