@@ -111,7 +111,7 @@ const limpiarFormulario = () => {
       id_usuario: userData?.id || (userData as any)?.id_usuario || null,
       id_lugar: null,
       id_modalidad: "",
-      id_origen: "1",
+      id_origen: "7",
       id_tipo_patrullaje: "7",
       id_modalidad_patrullaje: "6",
       vehiculos_detalle: [],

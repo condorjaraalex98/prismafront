@@ -4,31 +4,36 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    ImageBackground,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 import { useAuth } from "../context/userContext";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const MJM_BLUE = "#024885";
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
+export const API_URL =
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
 const BACKGROUND_IMAGE =
   "https://www.munijesusmaria.gob.pe/wp-content/uploads/2025/01/WhatsApp-Image-2025-01-20-at-10.19.12-AM.jpeg";
 
 export default function HomeScreen() {
   const router = useRouter();
   const { login } = useAuth();
-const [showSupport, setShowSupport] = useState(false);   // Estado para mostrar/ocultar soporte
+  
+  // Hook reactivo para obtener siempre las dimensiones actualizadas de la ventana
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+
+  const [showSupport, setShowSupport] = useState(false);
   const [usuario, setUsuario] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -40,20 +45,41 @@ const [showSupport, setShowSupport] = useState(false);   // Estado para mostrar/
   const handleLogin = async () => {
     if (!usuario || !contrasena)
       return Alert.alert("Aviso", "Ingresa tus credenciales");
+
     try {
       const response = await fetch(`${API_URL}/login`, {
-
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ usuario, contrasena }),
       });
+
       const data = await response.json();
+
       if (response.ok) {
+        // 1. Guardar la sesión en el contexto global
         login(data);
-        router.replace({
-          pathname: "/(tabs)/principal",
-          params: { idUsuario: data.id },
-        });
+
+        // 2. Evaluamos ancho en tiempo real (móvil vs web de escritorio)
+        const currentWidth = Dimensions.get("window").width || windowWidth;
+        const esCelular = Platform.OS !== "web" || currentWidth < 768;
+
+        // 3. Redirección sincronizada
+        setTimeout(() => {
+          if (esCelular) {
+            // Celular / App Nativa / Web en móvil -> / (tabs) / principal
+            router.replace({
+              pathname: "/(tabs)/principal",
+              params: { idUsuario: data.id },
+            });
+          } else {
+            // Web en PC / Pantalla ancha -> / cecomdoceh (Coincide con tu Sidebar)
+            router.replace({
+              pathname: "/cecomdoceh",
+              params: { idUsuario: data.id },
+            });
+          }
+        }, 50);
+
       } else {
         Alert.alert("Error", data.message);
       }
@@ -70,19 +96,15 @@ const [showSupport, setShowSupport] = useState(false);   // Estado para mostrar/
 
     setLoadingPass(true);
     try {
-      const response = await fetch(
-        `${API_URL}/api/usuarios/cambiar-password `,
-           
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            usuario,
-            pass_actual: passActual,
-            nueva_pass: nuevaPass,
-          }),
-        },
-      );
+      const response = await fetch(`${API_URL}/api/usuarios/cambiar-password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          usuario,
+          pass_actual: passActual,
+          nueva_pass: nuevaPass,
+        }),
+      });
       if (response.ok) {
         Alert.alert("Éxito", "Contraseña actualizada.");
         setModalVisible(false);
@@ -121,7 +143,7 @@ const [showSupport, setShowSupport] = useState(false);   // Estado para mostrar/
               <View style={styles.loginCard}>
                 <View style={styles.logoContainer}>
                   <Image
-                    source={require('../assets/images/logo.png')}
+                    source={require("../assets/images/logo.png")}
                     style={styles.logo}
                     contentFit="contain"
                   />
@@ -131,69 +153,71 @@ const [showSupport, setShowSupport] = useState(false);   // Estado para mostrar/
                   Sistema Gestión de Ocurrencias
                 </ThemedText>
                 <ThemedText style={styles.subWelcomeText}>
-                 PRISMA OPS
+                  PRISMA OPS
                 </ThemedText>
 
-               <View style={styles.form}>
-      <ThemedText style={styles.label}>USUARIO</ThemedText>
-      <TextInput
-        style={styles.input}
-        value={usuario}
-        onChangeText={(t) => setUsuario(t.toUpperCase())}
-        autoCapitalize="characters"
-        placeholder="Ingrese su Usuario"
-        placeholderTextColor="#94A3B8"
-      />
+                <View style={styles.form}>
+                  <ThemedText style={styles.label}>USUARIO</ThemedText>
+                  <TextInput
+                    style={styles.input}
+                    value={usuario}
+                    onChangeText={(t) => setUsuario(t.toUpperCase())}
+                    autoCapitalize="characters"
+                    placeholder="Ingrese su Usuario"
+                    placeholderTextColor="#94A3B8"
+                  />
 
-      <ThemedText style={styles.label}>CONTRASEÑA</ThemedText>
-      <TextInput
-        style={styles.input}
-        value={contrasena}
-        onChangeText={setContrasena}
-        secureTextEntry
-        placeholder="••••••••"
-        placeholderTextColor="#94A3B8"
-      />
+                  <ThemedText style={styles.label}>CONTRASEÑA</ThemedText>
+                  <TextInput
+                    style={styles.input}
+                    value={contrasena}
+                    onChangeText={setContrasena}
+                    secureTextEntry
+                    placeholder="••••••••"
+                    placeholderTextColor="#94A3B8"
+                  />
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleLogin}
-        activeOpacity={0.8}
-      >
-        <ThemedText style={styles.buttonText}>
-          INGRESAR AL SISTEMA
-        </ThemedText>
-      </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.button}
+                    onPress={handleLogin}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText style={styles.buttonText}>
+                      INGRESAR AL SISTEMA
+                    </ThemedText>
+                  </TouchableOpacity>
 
-      {/* Botón para cambiar contraseña */}
-      <TouchableOpacity
-        onPress={() => setModalVisible(true)}
-        style={styles.forgotPassword}
-      >
-        <ThemedText style={styles.forgotText}>
-          ¿Desea cambiar su contraseña?
-        </ThemedText>
-      </TouchableOpacity>
-       
-      {/* Botón de Soporte Técnico (Alterna la visibilidad abajo) */}
-      <TouchableOpacity
-        onPress={() => setShowSupport(!showSupport)}
-        style={styles.forgotPassword}
-      >
-        <ThemedText style={styles.supportName}>Soporte técnico</ThemedText>
-      </TouchableOpacity>
+                  {/* Botón para cambiar contraseña */}
+                  <TouchableOpacity
+                    onPress={() => setModalVisible(true)}
+                    style={styles.forgotPassword}
+                  >
+                    <ThemedText style={styles.forgotText}>
+                      ¿Desea cambiar su contraseña?
+                    </ThemedText>
+                  </TouchableOpacity>
 
-      {/* Datos de soporte que aparecen/desaparecen abajo al presionar */}
-      {showSupport && (
-        <View style={styles.supportContainer}>
-          <ThemedText style={styles.supportName}>Roberto Alexander Cóndor Jara</ThemedText>
-          <ThemedText style={styles.supportEmail}>condorjaraa@gmail.com - 997356558</ThemedText>
-        </View>
-      )}
-    </View>
-                
+                  {/* Botón de Soporte Técnico */}
+                  <TouchableOpacity
+                    onPress={() => setShowSupport(!showSupport)}
+                    style={styles.forgotPassword}
+                  >
+                    <ThemedText style={styles.supportName}>Soporte técnico</ThemedText>
+                  </TouchableOpacity>
+
+                  {/* Datos de soporte */}
+                  {showSupport && (
+                    <View style={styles.supportContainer}>
+                      <ThemedText style={styles.supportName}>
+                        Roberto Alexander Cóndor Jara
+                      </ThemedText>
+                      <ThemedText style={styles.supportEmail}>
+                        condorjaraa@gmail.com - 997356558
+                      </ThemedText>
+                    </View>
+                  )}
+                </View>
               </View>
-              
             </ScrollView>
           </KeyboardAvoidingView>
         </View>
@@ -202,7 +226,15 @@ const [showSupport, setShowSupport] = useState(false);   // Estado para mostrar/
       {/* MODAL DE CAMBIO DE CONTRASEÑA */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                width: windowWidth * 0.88,
+                maxHeight: windowHeight * 0.85,
+              },
+            ]}
+          >
             <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
               <ThemedText style={styles.modalTitle}>Seguridad</ThemedText>
 
@@ -308,19 +340,18 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     elevation: 12,
   },
-  // Contenedor adaptado a la proporción horizontal de la nueva imagen
   logoContainer: {
-    width: '100%',
-    maxWidth: 280, // Ancho controlado para que no ocupe toda la tarjeta
-    height: 110,    // Altura fija proporcional al ancho de esta nueva imagen
+    width: "100%",
+    maxWidth: 280,
+    height: 110,
     marginBottom: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  logo: { 
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'transparent',
+  logo: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "transparent",
   },
   welcomeText: {
     fontSize: 14,
@@ -397,23 +428,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalContent: {
-    width: SCREEN_WIDTH * 0.88,
     maxWidth: 350,
-    maxHeight: SCREEN_HEIGHT * 0.85,
     backgroundColor: "#FFFFFF",
     borderRadius: 25,
     padding: 22,
     elevation: 25,
   },
   supportContainer: {
-  marginTop: 8,
-  padding: 12,
-  backgroundColor: '#F8FAFC', // Un fondo sutil (gris muy claro / azulado)
-  borderRadius: 8,
-  borderWidth: 1,
-  borderColor: '#E2E8F0',
-  alignItems: 'center',        // Centra el texto (o cámbialo a 'flex-start' si prefieres a la izquierda)
-},
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+  },
   modalTitle: {
     fontSize: 20,
     fontWeight: "900",

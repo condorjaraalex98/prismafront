@@ -60,7 +60,7 @@ interface TipoVehiculoItem {
 // 📌 Catálogo estático de tipos de vehículo enlazados a ocurrencia_vehiculo_detalle (id_tipo_vehiculo)
 const TIPOS_VEHICULO_ESTATICOS: TipoVehiculoItem[] = [
   { id_tipo_vehiculo: 1, descripcion: "Camioneta" },
-  { id_tipo_vehiculo: 2, descripcion: "Motocicleta" },
+  
   { id_tipo_vehiculo: 4, descripcion: "Ambulancia" },
 ];
 
@@ -71,11 +71,11 @@ const obtenerTextoTurnoActual = (): string => {
   const tiempoMinutos = hora * 60 + minutos;
 
   if (tiempoMinutos >= 430 && tiempoMinutos < 900) {
-    return "Turno Mañana (07:00 - 15:00)";
+    return "Turno Mañana (07:00 - 14:59)";
   } else if (tiempoMinutos >= 900 && tiempoMinutos < 1320) {
-    return "Turno Tarde (15:00 - 22:00)";
+    return "Turno Tarde (15:00 - 21:59)";
   } else {
-    return "Turno Noche (22:00 - 07:00)";
+    return "Turno Noche (22:00 - 06:59)";
   }
 };
 
@@ -234,7 +234,7 @@ export default function GraficoEstadisticasScreen() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.tipos_patrullaje) {
-          const permitidos = [1, 2, 3, 4, 8];
+          const permitidos = [1, 2, 3, 4,6, 8];
           const filtrados = data.tipos_patrullaje.filter((item: TipoPatrullajeItem) =>
             permitidos.includes(Number(item.id_tipop))
           );
@@ -244,11 +244,24 @@ export default function GraficoEstadisticasScreen() {
       .catch((err) => console.error("Error cargando catálogos de filtros", err));
   }, []);
 
+  // 📌 NUEVO: Si no es el patrullaje 3, reseteamos automáticamente el filtro de vehículos
+  useEffect(() => {
+    if (filtroTipoPatrullaje !== "3") {
+      setFiltroTipoVehiculo("TODOS");
+    }
+  }, [filtroTipoPatrullaje]);
+
   // Construcción de parámetros enviando id_tipop e id_tipo_vehiculo
-  const construirQueryString = useCallback(() => {
-    let query = "?";
-    if (filtroTipoPatrullaje !== "TODOS") query += `id_tipop=${filtroTipoPatrullaje}&`;
-    if (filtroTipoVehiculo !== "TODOS") query += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
+const construirQueryString = useCallback(() => {
+    let query = "?excluir_origenes=1,5,6,7,11&";
+    if (filtroTipoPatrullaje !== "TODOS") {
+      query += `id_tipop=${filtroTipoPatrullaje}&`;
+      if (filtroTipoPatrullaje === "3" && filtroTipoVehiculo !== "TODOS") {
+        query += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
+      } else if (filtroTipoPatrullaje === "3" && filtroTipoVehiculo === "TODOS") {
+        query += `excluir_tipo_vehiculo=2&`; // 📌 Excluye las motos en la vista general del patrullaje 3
+      }
+    }
     return query;
   }, [filtroTipoPatrullaje, filtroTipoVehiculo]);
 
@@ -272,13 +285,21 @@ export default function GraficoEstadisticasScreen() {
 
   const fetchConteoFiltros = useCallback(async () => {
     try {
-      const permitidos = [1, 2, 3, 4, 8];
+      const permitidos = [1, 2, 3, 4, 6, 8];
       const nuevosTotales: Record<string, number> = {};
       let sumaTotal = 0;
 
       for (const idTipop of permitidos) {
-        let url = `${API_BASE_URL}/ocurrencias/estadisticas?id_tipop=${idTipop}`;
-        if (filtroTipoVehiculo !== "TODOS") url += `&id_tipo_vehiculo=${filtroTipoVehiculo}`;
+        let url = `${API_BASE_URL}/ocurrencias/estadisticas?id_tipop=${idTipop}&excluir_origenes=1,5,6,7,11`;
+        
+        // 📌 Si estamos calculando el conteo del patrullaje 3, excluimos las motos (id_tipo_vehiculo = 2)
+        if (String(idTipop) === "3") {
+          if (filtroTipoVehiculo !== "TODOS") {
+            url += `&id_tipo_vehiculo=${filtroTipoVehiculo}`;
+          } else {
+            url += `&excluir_tipo_vehiculo=2`;
+          }
+        }
 
         const response = await fetch(url);
         const data = await response.json();
@@ -316,9 +337,9 @@ export default function GraficoEstadisticasScreen() {
     setSelectedModalidad(null);
     setLoadingUserModalidades(true);
     try {
-      let url = `${API_BASE_URL}/ocurrencias/modalidades-por-usuario?id_usuario=${idUsuario}&`;
+      let url = `${API_BASE_URL}/ocurrencias/modalidades-por-usuario?id_usuario=${idUsuario}&excluir_origenes=1,5,6,7,11&`;
       if (filtroTipoPatrullaje !== "TODOS") url += `id_tipop=${filtroTipoPatrullaje}&`;
-      if (filtroTipoVehiculo !== "TODOS") url += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
+      if (filtroTipoVehiculo !== "TODOS" && filtroTipoPatrullaje === "3") url += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
 
       const response = await fetch(url);
       if (!response.ok) throw new Error("Error obteniendo detalles");
@@ -337,9 +358,9 @@ export default function GraficoEstadisticasScreen() {
     setSelectedModalidad(nombreModalidad);
     setLoadingDirecciones(true);
     try {
-      let url = `${API_BASE_URL}/ocurrencias/detalle-por-modalidad?id_usuario=${selectedUserId}&modalidad=${encodeURIComponent(nombreModalidad)}&`;
+      let url = `${API_BASE_URL}/ocurrencias/detalle-por-modalidad?id_usuario=${selectedUserId}&modalidad=${encodeURIComponent(nombreModalidad)}&excluir_origenes=1,5,6,7,11&`;
       if (filtroTipoPatrullaje !== "TODOS") url += `id_tipop=${filtroTipoPatrullaje}&`;
-      if (filtroTipoVehiculo !== "TODOS") url += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
+      if (filtroTipoVehiculo !== "TODOS" && filtroTipoPatrullaje === "3") url += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
 
       const response = await fetch(url);
       if (!response.ok) throw new Error("Error obteniendo direcciones");
@@ -379,7 +400,7 @@ export default function GraficoEstadisticasScreen() {
           {/* CABECERA Y TURNO */}
           <View style={styles.headerContainer}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <ThemedText style={styles.mainTitle}>DASHBOARD DE ESTADÍSTICAS</ThemedText>
+              <ThemedText style={styles.mainTitle}>DASHBOARD CAMPO GENERAL</ThemedText>
               <View style={styles.turnoBadge}>
                 <Ionicons name="time-outline" size={12} color={MJM_BLUE} />
                 <ThemedText style={styles.turnoBadgeText}>{textoTurno}</ThemedText>
@@ -419,30 +440,34 @@ export default function GraficoEstadisticasScreen() {
               })}
             </ScrollView>
 
-            <View style={{ height: 10 }} />
-
-            <ThemedText style={styles.filtroLabel}>Tipo de Vehículo (Detalle):</ThemedText>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeScroll}>
-              <TouchableOpacity
-                style={[styles.badge, filtroTipoVehiculo === "TODOS" && styles.badgeActiveVehiculo]}
-                onPress={() => setFiltroTipoVehiculo("TODOS")}
-              >
-                <ThemedText style={[styles.badgeText, filtroTipoVehiculo === "TODOS" && styles.badgeTextActive]}>
-                  Todos
-                </ThemedText>
-              </TouchableOpacity>
-              {tiposVehiculoList.map((item) => (
-                <TouchableOpacity
-                  key={item.id_tipo_vehiculo}
-                  style={[styles.badge, filtroTipoVehiculo === String(item.id_tipo_vehiculo) && styles.badgeActiveVehiculo]}
-                  onPress={() => setFiltroTipoVehiculo(String(item.id_tipo_vehiculo))}
-                >
-                  <ThemedText style={[styles.badgeText, filtroTipoVehiculo === String(item.id_tipo_vehiculo) && styles.badgeTextActive]}>
-                    {item.descripcion}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {/* 📌 SE MUESTRA ÚNICAMENTE CUANDO EL TIPO DE PATRULLAJE ES 3 */}
+            {filtroTipoPatrullaje === "3" && (
+              <>
+                <View style={{ height: 10 }} />
+                <ThemedText style={styles.filtroLabel}>Tipo de Vehículo (Detalle):</ThemedText>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeScroll}>
+                  <TouchableOpacity
+                    style={[styles.badge, filtroTipoVehiculo === "TODOS" && styles.badgeActiveVehiculo]}
+                    onPress={() => setFiltroTipoVehiculo("TODOS")}
+                  >
+                    <ThemedText style={[styles.badgeText, filtroTipoVehiculo === "TODOS" && styles.badgeTextActive]}>
+                      Todos
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {tiposVehiculoList.map((item) => (
+                    <TouchableOpacity
+                      key={item.id_tipo_vehiculo}
+                      style={[styles.badge, filtroTipoVehiculo === String(item.id_tipo_vehiculo) && styles.badgeActiveVehiculo]}
+                      onPress={() => setFiltroTipoVehiculo(String(item.id_tipo_vehiculo))}
+                    >
+                      <ThemedText style={[styles.badgeText, filtroTipoVehiculo === String(item.id_tipo_vehiculo) && styles.badgeTextActive]}>
+                        {item.descripcion}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
           </View>
 
           {errorMessage && (

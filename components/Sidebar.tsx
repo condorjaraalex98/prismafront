@@ -125,6 +125,14 @@ const handleToggleSection = (sectionLabel: string) => {
         onPress={() => navigateTo("rcampo")}
         isSubItem
       />
+        <MenuOption
+        icon="stats-chart-outline"
+        label="Estadística MOTO"
+        isActive={activeRoute === "rcampomoto"}
+        isExpanded={true}
+        onPress={() => navigateTo("rcampomoto")}
+        isSubItem
+      />
     </CollapsibleSection>
 
     {/* Segundo Collapsible: PRINCIPAL / INICIO */}
@@ -340,6 +348,23 @@ const handleToggleSection = (sectionLabel: string) => {
             isOpen={openSection === "ESTADISTICA"}
             onToggle={() => handleToggleSection("ESTADISTICA")}
           >
+             <MenuOption
+        icon="stats-chart-outline"
+        label="Estadística CAMPO"
+        isActive={activeRoute === "rcampo"}
+        isExpanded={true}
+        onPress={() => navigateTo("rcampo")}
+        isSubItem
+      />
+
+         <MenuOption
+        icon="stats-chart-outline"
+        label="Estadística MOTO"
+        isActive={activeRoute === "rcampomoto"}
+        isExpanded={true}
+        onPress={() => navigateTo("rcampomoto")}
+        isSubItem
+      />
             <MenuOption
               icon="location-outline"
               label="Registro"
@@ -857,14 +882,15 @@ const handleToggleSection = (sectionLabel: string) => {
         )}
 
         {/* --- BOTÓN CERRAR SESIÓN --- */}
+       {/* --- BOTÓN CERRAR SESIÓN --- */}
         <TouchableOpacity
           style={styles.menuItem}
           onPress={async () => {
+            // Limpiamos la sesión del contexto
             await logout();
+            
+            // Forzamos el reemplazo directo a la raíz sin recargar la ventana entera
             router.replace("/");
-            if (Platform.OS === "web") {
-              window.location.reload();
-            }
           }}
         >
           <View style={styles.iconBox}>

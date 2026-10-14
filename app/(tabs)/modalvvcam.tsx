@@ -142,11 +142,12 @@ const [fotos, setFotos] = useState<FotoEstado[]>([]);
     tipo_asignacion: "MUNICIPAL" as "MUNICIPAL" | "INTEGRADO",
     id_pnp: null as number | null,
   });
-  const getHoy = () => {
+const getHoy = () => {
     const d = new Date();
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-      .toISOString()
-      .split("T")[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`; // 📌 Retorna estricta fecha local YYYY-MM-DD
   };
 
   const ESTADO_INICIAL = {
@@ -409,15 +410,19 @@ const [fotos, setFotos] = useState<FotoEstado[]>([]);
 
 const confirmIOSSelection = () => {
   if (activeField === "fecha_evento") {
-    const hoy = new Date();
-    const fechaValida = tempDate > hoy ? hoy : tempDate;
-
-    const offset = fechaValida.getTimezoneOffset() * 60000;
-    const fechaStr = new Date(fechaValida.getTime() - offset)
+    const hoyStr = getHoy();
+    const offset = tempDate.getTimezoneOffset() * 60000;
+    const fechaSeleccionadaStr = new Date(tempDate.getTime() - offset)
       .toISOString()
       .split("T")[0];
 
-    setForm((f) => ({ ...f, fecha_evento: fechaStr }));
+    // 📌 Si la fecha elegida es mayor a hoy, la forzamos a hoy
+    if (fechaSeleccionadaStr > hoyStr) {
+      Alert.alert("Atención", "No se pueden seleccionar fechas futuras.");
+      setForm((f) => ({ ...f, fecha_evento: hoyStr }));
+    } else {
+      setForm((f) => ({ ...f, fecha_evento: fechaSeleccionadaStr }));
+    }
   } else if (activeField) {
     const horaStr = tempDate.toLocaleTimeString("en-GB", {
       hour: "2-digit",
@@ -1304,32 +1309,38 @@ const seleccionarGaleria = async () => {
 
                         {/* Selector de Fecha Web / Móvil */}
                         <View>
-                          {Platform.OS === "web" ? (
-                            <View style={{ width: "100%" }}>
-                              <input
-                                type="date"
-                                value={form.fecha_evento}
-                                max={new Date().toISOString().split("T")[0]} // 👈 Validación para bloquear fechas futuras en la web
-                                onChange={(e) =>
-                                  setForm({
-                                    ...form,
-                                    fecha_evento: e.target.value,
-                                  })
-                                }
-                                style={{
-                                  height: 45,
-                                  width: "100%",
-                                  borderWidth: 1,
-                                  borderColor: "#ccc",
-                                  borderRadius: 8,
-                                  fontSize: 16,
-                                  backgroundColor: "#FFFFFF",
-                                  color: "#000000",
-                                  borderStyle: "solid",
-                                }}
-                              />
-                            </View>
-                          ) : (
+                        {Platform.OS === "web" ? (
+  <View style={{ width: "100%" }}>
+    <input
+      type="date"
+      value={form.fecha_evento}
+      max={getHoy()} // 👈 Bloquea estrictamente cualquier fecha posterior al día actual
+      onChange={(e) => {
+        const fechaSeleccionada = e.target.value;
+        const hoyStr = getHoy();
+        
+        // Validación de seguridad por si manipulan el DOM en web
+        if (fechaSeleccionada > hoyStr) {
+          Alert.alert("Atención", "No se pueden registrar ocurrencias con fechas futuras.");
+          setForm({ ...form, fecha_evento: hoyStr });
+        } else {
+          setForm({ ...form, fecha_evento: fechaSeleccionada });
+        }
+      }}
+      style={{
+        height: 45,
+        width: "100%",
+        borderWidth: 1,
+        borderColor: "#ccc",
+        borderRadius: 8,
+        fontSize: 16,
+        backgroundColor: "#FFFFFF",
+        color: "#000000",
+        borderStyle: "solid",
+      }}
+    />
+  </View>
+) : (
                             <Pressable
                               onPress={() => {
                                 setPickerMode("date");

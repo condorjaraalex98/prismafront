@@ -1497,17 +1497,11 @@ console.log("Datos que llegan del backend:", json.data[0]); // <--- AÑADE ESTO
 
                   <div style={styles.infoRowGrid}>
                     <span style={styles.infoLabel}>Fecha Evento:</span>
-                    <span style={styles.infoValue}>
-                      {detalleSeleccionado.fecha_evento
-                        ? new Date(
-                            detalleSeleccionado.fecha_evento,
-                          ).toLocaleDateString("es-ES", {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })
-                        : "S/F"}
-                    </span>
+                 <span style={styles.infoValue}>
+  {detalleSeleccionado.fecha_evento
+    ? formatearFechaConDia(detalleSeleccionado.fecha_evento)
+    : "S/F"}
+</span>
                   </div>
 
                   <div style={{ ...styles.infoRowGrid, display: 'flex', justifyContent: 'space-between', width: '100%' }}>

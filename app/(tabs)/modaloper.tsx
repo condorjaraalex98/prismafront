@@ -110,8 +110,8 @@ const limpiarFormulario = () => {
     setForm({
       id_usuario: userData?.id || (userData as any)?.id_usuario || null,
       id_lugar: null,
-      id_modalidad: "",
-      id_origen: "1",
+      id_modalidad: "141",
+      id_origen: "11",
       id_tipo_patrullaje: "7",
       id_modalidad_patrullaje: "6",
       vehiculos_detalle: [],
@@ -1884,60 +1884,7 @@ const seleccionarGaleria = async () => {
                           </ThemedText>
                         </View>
 
-                        {/* ACCIONES DE FOTOS (Etiqueta vacía eliminada) */}
-                        <View style={[styles.photoActions, { marginTop: 5 }]}>
-                          <Pressable
-                            style={[
-                              styles.btnCamAction,
-                              { backgroundColor: "#024885" },
-                            ]}
-                            onPress={seleccionarGaleria}
-                          >
-                            <Ionicons name="images" size={20} color="white" />
-                          </Pressable>
-                        </View>
-
-                        <ThemedText
-                          style={[
-                            styles.photoCounter,
-                            { marginVertical: 5 },
-                            fotos.length === MAX_FOTOS && {
-                              color: "red",
-                              fontWeight: "bold",
-                            },
-                          ]}
-                        >
-                          {`${fotos.length} de ${MAX_FOTOS} fotos`}
-                        </ThemedText>
-
-                        {/* CAROUSEL DE FOTOS */}
-                        {fotos.length > 0 && (
-                          <ScrollView
-                            keyboardShouldPersistTaps="handled"
-                            horizontal
-                            style={[styles.photoCarousel, { maxHeight: 100 }]}
-                            showsHorizontalScrollIndicator={false}
-                          >
-                            {fotos.map((f, i) => (
-                              <View key={i} style={styles.photoWrapper}>
-                                <Image
-                                  source={{ uri: f.uri }}
-                                  style={styles.photoThumb}
-                                />
-                             <Pressable
-  style={styles.removePhoto}
-  onPress={() => {
-    const fotoAEliminar = fotos[i];
-    liberarUriPreview(fotoAEliminar.uri);
-    setFotos((prev) => prev.filter((_, idx) => idx !== i));
-  }}
->
-  <Ionicons name="close-circle" size={22} color="red" />
-</Pressable>
-                              </View>
-                            ))}
-                          </ScrollView>
-                        )}
+                       
 
                         <Pressable
                           style={[

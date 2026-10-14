@@ -57,11 +57,11 @@ const obtenerTextoTurnoActual = (): string => {
   const tiempoMinutos = hora * 60 + minutos;
 
   if (tiempoMinutos >= 430 && tiempoMinutos < 900) {
-    return "Turno Mañana (07:00 - 15:00)";
+    return "Turno Mañana (07:00 - 14:59)";
   } else if (tiempoMinutos >= 900 && tiempoMinutos < 1320) {
-    return "Turno Tarde (15:00 - 22:00)";
+    return "Turno Tarde (15:00 - 21:59)";
   } else {
-    return "Turno Noche (22:00 - 07:00)";
+    return "Turno Noche (22:00 - 06:59)" ;
   }
 };
 
