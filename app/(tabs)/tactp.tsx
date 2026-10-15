@@ -579,7 +579,12 @@ const tomarFoto = async () => {
       setFotos((p) => [...p, { uri: uriPreview, url_remota: null, uploading: true }]);
 
       // 2. Subir al servidor R2
-      const urlRemota = await subirFotoAlServidor(fotoProcesada, API_URL);
+      const urlRemota = await subirFotoAlServidor(
+  fotoProcesada, 
+  API_URL, 
+  form.id_modalidad, 
+  form.fecha_evento
+);
 
       // 3. Actualizar con la URL remota exitosa
       setFotos((prev) =>
@@ -634,7 +639,12 @@ const seleccionarGaleria = async () => {
 
             setFotos((p) => [...p, { uri: uriPreview, url_remota: null, uploading: true }]);
 
-            const urlRemota = await subirFotoAlServidor(fotoProcesada, API_URL);
+            const urlRemota = await subirFotoAlServidor(
+  fotoProcesada, 
+  API_URL, 
+  form.id_modalidad, 
+  form.fecha_evento
+);
 
             setFotos((prev) =>
               prev.map((f) =>
