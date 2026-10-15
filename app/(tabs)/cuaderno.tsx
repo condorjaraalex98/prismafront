@@ -91,11 +91,12 @@ const [fotos, setFotos] = useState<FotoEstado[]>([]);
     tipo_asignacion: "MUNICIPAL" as "MUNICIPAL" | "INTEGRADO",
     id_pnp: null as number | null,
   });
-  const getHoy = () => {
+const getHoy = () => {
     const d = new Date();
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-      .toISOString()
-      .split("T")[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`; // 📌 Retorna estricta fecha local YYYY-MM-DD
   };
   const [form, setForm] = useState({
     id_usuario: null,
@@ -300,15 +301,19 @@ const procesarSeleccion = (selectedDate: Date) => {
   // --- CONFIRMAR SELECCIÓN EN iOS ---
 const confirmIOSSelection = () => {
   if (activeField === "fecha_evento") {
-    const hoy = new Date();
-    const fechaValida = tempDate > hoy ? hoy : tempDate;
-
-    const offset = fechaValida.getTimezoneOffset() * 60000;
-    const fechaStr = new Date(fechaValida.getTime() - offset)
+    const hoyStr = getHoy();
+    const offset = tempDate.getTimezoneOffset() * 60000;
+    const fechaSeleccionadaStr = new Date(tempDate.getTime() - offset)
       .toISOString()
       .split("T")[0];
 
-    setForm((f) => ({ ...f, fecha_evento: fechaStr }));
+    // 📌 Si la fecha elegida es mayor a hoy, la forzamos a hoy
+    if (fechaSeleccionadaStr > hoyStr) {
+      Alert.alert("Atención", "No se pueden seleccionar fechas futuras.");
+      setForm((f) => ({ ...f, fecha_evento: hoyStr }));
+    } else {
+      setForm((f) => ({ ...f, fecha_evento: fechaSeleccionadaStr }));
+    }
   } else if (activeField) {
     const horaStr = tempDate.toLocaleTimeString("en-GB", {
       hour: "2-digit",
@@ -735,7 +740,7 @@ const enviarRegistro = async () => {
   }
 };
   // --- RENDER HELPERS ---
-  const renderMosaicos = (
+ const renderMosaicos = (
     data: any[],
     currentId: any,
     field: string,
@@ -745,7 +750,12 @@ const enviarRegistro = async () => {
       {data.map((item: any) => (
         <Pressable
           key={item.value}
-          onPress={() => setForm({ ...form, [field]: item.value })}
+          onPress={() => {
+            // Fuerza a que la UI responda al toque instantáneamente antes de recalcular
+            requestAnimationFrame(() => {
+              setForm({ ...form, [field]: item.value });
+            });
+          }}
           style={[
             styles.mosaicoItem,
             currentId === item.value && styles.mosaicoSelected,
@@ -946,24 +956,29 @@ form.grupo,
                   <>
                     {/* 1. SELECCIÓN DE TIPO DE VEHÍCULO (Siempre visible primero) */}
                     <Dropdown
-                      style={[styles.dropdown, dynamicStyles.dropdown]}
-                      data={catalogos.tipos_vehiculo}
-                      labelField="label"
-                      valueField="value"
-                      placeholder="Seleccione Tipo Vehículo"
-                      value={unidadForm.id_tipo_vehiculo}
-                      onChange={(v) => {
-                        setUnidadForm({
-                          ...unidadForm,
-                          id_tipo_vehiculo: v.value,
-                          id_unidad: null,
-                          placa: "",
-                          tipo_asignacion: "MUNICIPAL",
-                          id_pnp: null,
-                        });
-                        fetchUnidades(v.value);
-                      }}
-                    />
+  style={[styles.dropdown, dynamicStyles.dropdown]}
+  data={catalogos.tipos_vehiculo}
+  labelField="label"
+  valueField="value"
+  placeholder="Seleccione Tipo Vehículo"
+  value={unidadForm.id_tipo_vehiculo}
+  onChange={(v) => {
+    // 1. Actualiza el estado visual de forma inmediata sin bloquear el hilo principal
+    setUnidadForm({
+      ...unidadForm,
+      id_tipo_vehiculo: v.value,
+      id_unidad: null,
+      placa: "",
+      tipo_asignacion: "MUNICIPAL",
+      id_pnp: null,
+    });
+
+    // 2. Dispara la petición de red con un pequeño respiro para la UI
+    setTimeout(() => {
+      fetchUnidades(v.value);
+    }, 50);
+  }}
+/>
 
                     {/* 2. LAS PLACAS Y OPCIONES SOLO APARECEN SI YA SE ELIGIÓ EL TIPO DE VEHÍCULO */}
                     {unidadForm.id_tipo_vehiculo && (
