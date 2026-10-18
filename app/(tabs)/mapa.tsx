@@ -3,7 +3,7 @@ import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View }
 import { SafeAreaView } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
 
 export default function MapaCuadrantes() {
     const [datos, setDatos] = useState([]);

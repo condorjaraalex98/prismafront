@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
 const MJM_BLUE = "#024885";
 const LIMIT_INICIAL = 5;
 
@@ -56,15 +56,19 @@ const obtenerTextoTurnoActual = (): string => {
   const minutos = ahora.getMinutes();
   const tiempoMinutos = hora * 60 + minutos;
 
-  if (tiempoMinutos >= 430 && tiempoMinutos < 900) {
+  // 07:00 (420 min) hasta las 14:59 (899 min)
+  if (tiempoMinutos >= 420 && tiempoMinutos < 900) {
     return "Turno Mañana (07:00 - 14:59)";
-  } else if (tiempoMinutos >= 900 && tiempoMinutos < 1320) {
+  } 
+  // 15:00 (900 min) hasta las 21:59 (1319 min)
+  else if (tiempoMinutos >= 900 && tiempoMinutos < 1320) {
     return "Turno Tarde (15:00 - 21:59)";
-  } else {
-    return "Turno Noche (22:00 - 06:59)" ;
+  } 
+  // 22:00 en adelante hasta las 06:59
+  else {
+    return "Turno Noche (22:00 - 06:59)";
   }
 };
-
 const DashboardCard = React.memo(
   ({
     titulo,

@@ -19,7 +19,7 @@ import WebView from 'react-native-webview';
 const { width } = Dimensions.get('window');
 const isDesktop = width > 768;
 const MJM_BLUE = '#024885';
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
 
 // Caché global en memoria del cliente (expira en 5 minutos)
 let memoriaCacheDatos: { poligonos: any[]; puntos: any[]; timestamp: number } | null = null;

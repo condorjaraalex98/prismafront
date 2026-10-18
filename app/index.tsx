@@ -22,7 +22,7 @@ import { useAuth } from "../context/userContext";
 
 const MJM_BLUE = "#024885";
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
 const BACKGROUND_IMAGE =
   "https://www.munijesusmaria.gob.pe/wp-content/uploads/2025/01/WhatsApp-Image-2025-01-20-at-10.19.12-AM.jpeg";
 

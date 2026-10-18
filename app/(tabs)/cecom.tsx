@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 // Hook de autenticación global
 import { useAuth } from "../../context/userContext";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
 const MJM_BLUE = "#024885";
 
 interface Ocurrencia {

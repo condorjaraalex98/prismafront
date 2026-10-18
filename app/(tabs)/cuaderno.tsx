@@ -25,7 +25,7 @@ import { Dropdown } from "react-native-element-dropdown";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/userContext";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
 
 type FotoEstado = {
   uri: string;

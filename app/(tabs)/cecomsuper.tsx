@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.13:3000";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
 const MJM_BLUE = "#024885";
 
 interface VehiculoMatriz {
