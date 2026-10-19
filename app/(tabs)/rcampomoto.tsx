@@ -202,8 +202,20 @@ export default function GraficoMotocicletasScreen() {
   const [direccionesModalidad, setDireccionesModalidad] = useState<DireccionItem[]>([]);
   const [loadingDirecciones, setLoadingDirecciones] = useState<boolean>(false);
 
-  const textoTurno = useMemo(() => obtenerTextoTurnoMotos(), []);
+ // ✅ CÓDIGO NUEVO:
+const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoMotos());
 
+useEffect(() => {
+  // Actualizar el estado al montar el componente
+  setTextoTurno(obtenerTextoTurnoMotos());
+
+  // Verificar la hora cada 30 segundos
+  const interval = setInterval(() => {
+    setTextoTurno(obtenerTextoTurnoMotos());
+  }, 30000);
+
+  return () => clearInterval(interval);
+}, []);
   // 📌 Forzamos permanentemente id_tipop=3 e id_tipo_vehiculo=2 (Excluyendo RCECOM)
   const construirQueryString = useCallback(() => {
     return "?excluir_origenes=1,5,6,7,11&id_tipop=3&id_tipo_vehiculo=2&";

@@ -227,8 +227,20 @@ export default function GraficoEstadisticasScreen() {
   const [direccionesModalidad, setDireccionesModalidad] = useState<DireccionItem[]>([]);
   const [loadingDirecciones, setLoadingDirecciones] = useState<boolean>(false);
 
-  const textoTurno = useMemo(() => obtenerTextoTurnoActual(), []);
+// ✅ CÓDIGO NUEVO:
+const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoActual());
 
+useEffect(() => {
+  // Actualizar el estado al montar el componente
+  setTextoTurno(obtenerTextoTurnoActual());
+
+  // Verificar la hora cada 30 segundos
+  const interval = setInterval(() => {
+    setTextoTurno(obtenerTextoTurnoActual());
+  }, 30000);
+
+  return () => clearInterval(interval);
+}, []);
   useEffect(() => {
     fetch(`${API_BASE_URL}/ocurrencias/catalogos-filtros`)
       .then((res) => res.json())
@@ -253,17 +265,22 @@ export default function GraficoEstadisticasScreen() {
 
   // Construcción de parámetros enviando id_tipop e id_tipo_vehiculo
 const construirQueryString = useCallback(() => {
-    let query = "?excluir_origenes=1,5,6,7,11&";
-    if (filtroTipoPatrullaje !== "TODOS") {
-      query += `id_tipop=${filtroTipoPatrullaje}&`;
-      if (filtroTipoPatrullaje === "3" && filtroTipoVehiculo !== "TODOS") {
-        query += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
-      } else if (filtroTipoPatrullaje === "3" && filtroTipoVehiculo === "TODOS") {
-        query += `excluir_tipo_vehiculo=2&`; // 📌 Excluye las motos en la vista general del patrullaje 3
-      }
+  let query = "?excluir_origenes=1,5,6,7,11&";
+  
+  if (filtroTipoPatrullaje !== "TODOS") {
+    query += `id_tipop=${filtroTipoPatrullaje}&`;
+    if (filtroTipoPatrullaje === "3" && filtroTipoVehiculo !== "TODOS") {
+      query += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
+    } else if (filtroTipoPatrullaje === "3" && filtroTipoVehiculo === "TODOS") {
+      query += `excluir_tipo_vehiculo=2&`; // Excluye motos en patrullaje 3
     }
-    return query;
-  }, [filtroTipoPatrullaje, filtroTipoVehiculo]);
+  } else {
+    // 📌 Agregamos esto para que en "TODOS" también se excluyan las motos del patrullaje 3
+    query += `excluir_tipo_vehiculo=2&`;
+  }
+  
+  return query;
+}, [filtroTipoPatrullaje, filtroTipoVehiculo]);
 
   const fetchEstadisticas = useCallback(async () => {
     setErrorMessage(null);
@@ -398,19 +415,28 @@ const construirQueryString = useCallback(() => {
           }
         >
           {/* CABECERA Y TURNO */}
-          <View style={styles.headerContainer}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <ThemedText style={styles.mainTitle}>DASHBOARD CAMPO GENERAL</ThemedText>
-              <View style={styles.turnoBadge}>
-                <Ionicons name="time-outline" size={12} color={MJM_BLUE} />
-                <ThemedText style={styles.turnoBadgeText}>{textoTurno}</ThemedText>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} activeOpacity={0.8}>
-              <Ionicons name="refresh" size={16} color="white" />
-              <ThemedText style={styles.refreshButtonText}>Actualizar</ThemedText>
-            </TouchableOpacity>
-          </View>
+        {/* CABECERA Y TURNO */}
+<View style={styles.headerContainer}>
+  <View style={{ flex: 1, marginRight: 10 }}>
+    {/* 📌 Contenedor horizontal para la fila del título y el total */}
+    <View style={styles.tituloRow}>
+      <ThemedText style={styles.mainTitle}>DASHBOARD CAMPO GENERAL</ThemedText>
+      <ThemedText style={styles.totalHeaderBadge}>
+        ({totalGeneralPatrullaje} reg.)
+      </ThemedText>
+    </View>
+
+    <View style={styles.turnoBadge}>
+      <Ionicons name="time-outline" size={12} color={MJM_BLUE} />
+      <ThemedText style={styles.turnoBadgeText}>{textoTurno}</ThemedText>
+    </View>
+  </View>
+
+  <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} activeOpacity={0.8}>
+    <Ionicons name="refresh" size={16} color="white" />
+    <ThemedText style={styles.refreshButtonText}>Actualizar</ThemedText>
+  </TouchableOpacity>
+</View>
 
           {/* FILTROS SUPERIORES */}
           <View style={styles.filtrosContainer}>
@@ -716,6 +742,17 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#64748b",
     letterSpacing: 1,
+  },
+  tituloRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  // 📌 Estilo para resaltar el total al lado del título
+  totalHeaderBadge: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: MJM_BLUE,
   },
   modalSubtitle: {
     fontSize: 14,
