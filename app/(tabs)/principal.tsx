@@ -47,6 +47,14 @@ const ACTIVIDADES_OPERATIVAS = [
     color: "#6f42c1",
     bg: "#f8f4ff",
   },
+  {
+    id: "10",
+    nombre: "OTROS OPERATIVOS",
+    ruta: "/operativo",
+    icono: "document-text",
+    color: "#343434",
+    bg: "#fff9f2",
+  },
 ];
 
 // 2. Otras Novedades (Color original naranja, separado por no ser recurrente)

@@ -12,7 +12,9 @@ import RegistroRedes from "./modalredes";
 import RegistroOcurrenciat from "./modaltele";
 import RegistroOcurrencia from "./modalvvcam";
 import RegistroOperador from "./modaloper";
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "${API_URL}";
+import RegistroSerIn from "./modaliniciocecom";
+import RegistroSerFi from "./modalfincecom";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
 
 interface Ocurrencia {
@@ -74,7 +76,44 @@ export default function ReportesWebScreen() {
   const [isFinished, setIsFinished] = useState(false);
   const [totalMisRegistros, setTotalMisRegistros] = useState(0);
   const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
+const obtenerUrlFoto = (foto: any) => {
+  if (!foto) return "";
 
+  let ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
+  if (!ruta) return "";
+
+  // 1. Limpiamos corchetes, comillas y espacios
+  ruta = String(ruta).replace(/[\[\]'"]+/g, "").trim();
+
+  // 2. CORRECCIÓN DE DUPLICACIÓN: Si la URL de R2 aparece repetida en el mismo string, nos quedamos solo con la primera ocurrencia
+  const r2Domain = "pub-bce5ad6110584baca6912e8944cd2051.r2.dev";
+  const firstIndex = ruta.indexOf(r2Domain);
+  if (firstIndex !== -1) {
+    // Buscamos el inicio del protocolo http/https antes del dominio o reconstruimos desde el dominio
+    const protocolIndex = ruta.lastIndexOf("http", firstIndex);
+    const startIndex = protocolIndex !== -1 ? protocolIndex : firstIndex;
+    
+    // Cortamos justo después de la extensión .jpg / .png / .jpeg si se llega a repetir
+    const cleanSub = ruta.slice(startIndex);
+    const matchExt = cleanSub.match(/^(https?:\/\/[^\s\)]+?\.(jpg|jpeg|png|webp|gif))/i);
+    if (matchExt && matchExt[1]) {
+      ruta = matchExt[1];
+    } else {
+      // Fallback si no encuentra la extensión exacta, cortamos en el primer espacio o duplicación del dominio
+      const secondIndex = cleanSub.indexOf(r2Domain, r2Domain.length);
+      ruta = secondIndex !== -1 ? cleanSub.slice(0, secondIndex) : cleanSub;
+    }
+  }
+
+  // 3. Si ya es una URL absoluta limpia, devuélvela tal cual
+  if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
+    return ruta;
+  }
+
+  // 4. Si es una ruta relativa tradicional
+  const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
+  return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
+};
   // Función de redirección de ejemplo (puedes llamarla desde cualquier botón o evento)
   const cambiarDePagina = (rutaDestino: string) => {
        router.replace("/cecomdoceh");
@@ -99,7 +138,7 @@ export default function ReportesWebScreen() {
   // ESTADOS PRINCIPALES
   const [registroEditar, setRegistroEditar] = useState<Ocurrencia | null>(null);
   const [reportesCompletos, setReportesCompletos] = useState<Ocurrencia[]>([]);
-  const [filtro, setFiltro] = useState<"TODOS" | "MIOS">("MIOS");
+const [filtro, setFiltro] = useState<"TODOS" | "MIOS">("TODOS");
   const [paginaActual, setPaginaActual] = useState(1);
   const [registrosPorPagina, setRegistrosPorPagina] = useState(10);
   const [totalRegistrosBD, setTotalRegistrosBD] = useState(0);
@@ -122,6 +161,8 @@ export default function ReportesWebScreen() {
     try {
       const queryTipo = tipoLugarId && tipoLugarId !== "default" ? tipoLugarId : "4";
       const response = await fetch(`${API_URL}/catalogos/lugares?tipo=${queryTipo}`);
+
+      
       if (!response.ok) throw new Error("Error al obtener lugares");
       
       const data = await response.json();
@@ -639,9 +680,60 @@ const handleGuardarCambios = async () => {
           onClick={() => setModalInsertOpen("operador")}
           style={{ ...styles.card, backgroundColor: MJM_BLUE }}
         >
-          <Ionicons name="share-social" size={26} color="white" />
+          <Ionicons name="megaphone" size={26} color="white" />
           <div style={styles.cardLab}>RADIOPERADOR</div>
         </button>
+
+          <div style={{ 
+  ...styles.card, 
+  backgroundColor: MJM_BLUE, 
+  display: "flex", 
+  flexDirection: "row", 
+  padding: 0, 
+  overflow: "hidden" 
+}}>
+  {/* Botón de Inicio */}
+<button
+      onClick={() => setModalInsertOpen("servicioIn")}// O usa router.replace("/cecomdoceh") si no quieres guardar en el historial
+  style={{
+    flex: 1,
+    backgroundColor: "transparent",
+    border: "none",
+    color: "white",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "15px 10px",
+    cursor: "pointer",
+    borderRight: "1px solid rgba(255, 255, 255, 0.2)" // Línea divisoria vertical
+  }}
+>
+  <Ionicons name="play-circle" size={24} color="white" />
+  <div style={{ ...styles.cardLab, marginTop: 5 }}>INICIO SERVICIO</div>
+</button>
+
+  {/* Botón de Fin */}
+  <button
+     onClick={() => setModalInsertOpen("servicioFi")} // O usa router.replace("/cecomdoceh") si no quieres guardar en el historial
+  style={{
+    flex: 1,
+    backgroundColor: "transparent",
+    border: "none",
+    color: "white",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "15px 10px",
+    cursor: "pointer",
+    borderRight: "1px solid rgba(255, 255, 255, 0.2)" // Línea divisoria vertical
+  }}
+>
+  
+  <div style={{ ...styles.cardLab, marginTop: 5 }}>FIN SERVICIO</div>
+</button>
+</div>
       </div>
 
       {/* Cabecera Principal */}
@@ -956,6 +1048,7 @@ const handleGuardarCambios = async () => {
         </td>
 
         {/* Celda 3: Origen */}
+        {/* Celda 3: Origen */}
         <td
           style={{
             ...styles.td,
@@ -964,28 +1057,34 @@ const handleGuardarCambios = async () => {
           }}
         >
           <div style={styles.celdaTruncadaContainer}>
+            {/* Primer elemento: más pequeño */}
             <div
               style={{
                 ...styles.txtB,
                 whiteSpace: "normal",
                 wordBreak: "break-word",
+                fontSize: "11px", // <-- Reducido aquí
               }}
               title={item.tipo_patrullaje_nombre || "---"}
             >
               {item.tipo_patrullaje_nombre || "---"}
             </div>
+
+            {/* Segundo elemento: más grandecito */}
             <div
               style={{
                 ...styles.txtS,
                 color: "#024885",
-                fontWeight: "500",
+                fontWeight: "600", // Le subí un poco el peso para que resalte más al ser más grande
                 whiteSpace: "normal",
                 wordBreak: "break-word",
+                fontSize: "13px", // <-- Aumentado aquí
               }}
               title={item.origen_descripcion}
             >
               {item.origen_descripcion}
             </div>
+
             <div
               style={{
                 ...styles.txtS,
@@ -1075,6 +1174,7 @@ const handleGuardarCambios = async () => {
         </td>
 
         {/* Celda 5: Fecha Evento */}
+    {/* Celda 5: Fecha Evento */}
         <td
           style={{
             ...styles.td,
@@ -1090,6 +1190,7 @@ const handleGuardarCambios = async () => {
               ...styles.txtB,
               whiteSpace: "normal",
               wordBreak: "break-word",
+              fontWeight: "bold", // <-- Negrita agregada aquí
             }}
           >
             {formatearFechaConDia(item.fecha_evento)}
@@ -1112,6 +1213,7 @@ const handleGuardarCambios = async () => {
               ...styles.txtB,
               whiteSpace: "normal",
               wordBreak: "break-word",
+              fontWeight: "bold", // <-- Negrita agregada aquí
             }}
           >
             {item.hora_llegada
@@ -1244,6 +1346,8 @@ const handleGuardarCambios = async () => {
   )}
 </tbody>
           </table>
+
+          
         </div>
 
         {/* CONTENEDOR DE PAGINACIÓN COMPLETO CON SELECTOR DE FILAS */}
@@ -1448,17 +1552,11 @@ const handleGuardarCambios = async () => {
 
                   <div style={styles.infoRowGrid}>
                     <span style={styles.infoLabel}>Fecha Evento:</span>
-                    <span style={styles.infoValue}>
-                      {detalleSeleccionado.fecha_evento
-                        ? new Date(
-                            detalleSeleccionado.fecha_evento,
-                          ).toLocaleDateString("es-ES", {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })
-                        : "S/F"}
-                    </span>
+                 <span style={styles.infoValue}>
+  {detalleSeleccionado.fecha_evento
+    ? formatearFechaConDia(detalleSeleccionado.fecha_evento)
+    : "S/F"}
+</span>
                   </div>
 
                   <div style={{ ...styles.infoRowGrid, display: 'flex', justifyContent: 'space-between', width: '100%' }}>
@@ -1491,7 +1589,7 @@ const handleGuardarCambios = async () => {
 </div>
 
                   <div style={styles.infoRowGrid}>
-                    <span style={styles.infoLabel}>Ubicación / Lugar:</span>
+                    <span style={styles.infoLabel}>Ubicación:</span>
                     <span style={styles.infoValue}>
                       {detalleSeleccionado.nombre_lugar || "---"}
                       <span style={{ color: "#64748b", fontSize: "12px" }}>
@@ -1544,134 +1642,131 @@ const handleGuardarCambios = async () => {
              
               </div>
  {/* EVIDENCIAS FOTOGRÁFICAS */}
-              {(() => {
-                let fotosArray: any[] = [];
-                try {
-                  const itemData = detalleSeleccionado as any;
-                  const fotosVal = itemData.fotos_json;
-                  fotosArray = fotosVal
-                    ? typeof fotosVal === "string"
-                      ? JSON.parse(fotosVal)
-                      : fotosVal
-                    : itemData.lista_fotos ||
-                      itemData.fotos ||
-                      [
-                        itemData.foto_1,
-                        itemData.foto_2,
-                        itemData.foto_3,
-                        itemData.foto_4,
-                      ].filter(Boolean);
-                } catch (e) {
-                  fotosArray = [
-                    detalleSeleccionado.foto_1,
-                    detalleSeleccionado.foto_2,
-                    detalleSeleccionado.foto_3,
-                    detalleSeleccionado.foto_4,
-                  ].filter(Boolean);
-                }
+     {(() => {
+  let fotosArray: any[] = [];
+  try {
+    const itemData = detalleSeleccionado as any;
+    const fotosVal = itemData.fotos_json || itemData.lista_fotos || itemData.fotos;
+    
+    if (fotosVal) {
+      // Si viene como string, lo parseamos; si ya es array, lo usamos
+      const parsed = typeof fotosVal === "string" ? JSON.parse(fotosVal) : fotosVal;
+      
+      if (Array.isArray(parsed)) {
+        // Aplanamos por si viene un array dentro de otro array y limpiamos cada ruta
+        fotosArray = parsed.flat(Infinity)
+                          .map(f => typeof f === "string" ? f.replace(/[\[\]'"]+/g, "").trim() : f)
+                          .filter((f) => f && f !== "null" && f !== "");
+      }
+    } 
+    
+    if (fotosArray.length === 0 && itemData.foto_principal) {
+      fotosArray = [String(itemData.foto_principal).replace(/[\[\]'"]+/g, "").trim()];
+    }
+  } catch (e) {
+    fotosArray = [];
+  }
 
-                if (Array.isArray(fotosArray) && fotosArray.length > 0) {
-                  return (
-                    <div style={{ marginTop: "16px" }}>
-                      <strong style={styles.sectionTitle}>
-                        Evidencias Adjuntas ({fotosArray.length}):
-                      </strong>
+  if (Array.isArray(fotosArray) && fotosArray.length > 0) {
+    return (
+      <div style={{ marginTop: "16px" }}>
+        <strong style={styles.sectionTitle}>
+          Evidencias Adjuntas ({fotosArray.length}):
+        </strong>
 
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: "8px",
-                          marginTop: "8px",
-                        }}
-                      >
-                        {fotosArray.map((foto: any, idx: number) => {
-                          const urlFoto =
-                            typeof foto === "string"
-                              ? foto
-                              : foto?.url_imagen || foto?.url || "";
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginTop: "8px",
+          }}
+        >
+          {fotosArray.map((foto: any, idx: number) => {
+            const urlFotoFinal = obtenerUrlFoto(foto);
 
-                          if (!urlFoto) return null;
+            return (
+              <div
+                key={idx}
+                style={{
+                  position: "relative",
+                  display: "inline-block",
+                }}
+              >
+                {/* Enlace que al hacer clic abre la foto original completa en Cloudflare R2 */}
+                <a
+                  href={urlFotoFinal}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 12px",
+                    backgroundColor: "#f1f5f9",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    color: "#024885",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    textDecoration: "none",
+                    cursor: "pointer",
+                  }}
+                  className="link-evidencia-foto"
+                >
+                  <span>📷 Ver Foto {idx + 1}</span>
+                </a>
 
-                          return (
-                            <div
-                              key={idx}
-                              style={{
-                                position: "relative",
-                                display: "inline-block",
-                              }}
-                            >
-                              <a
-                                href={urlFoto}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                  padding: "6px 12px",
-                                  backgroundColor: "#f1f5f9",
-                                  border: "1px solid #cbd5e1",
-                                  borderRadius: "6px",
-                                  color: "#024885",
-                                  fontSize: "12px",
-                                  fontWeight: "600",
-                                  textDecoration: "none",
-                                  cursor: "pointer",
-                                }}
-                                className="link-evidencia-foto"
-                              >
-                                <span>📷 Ver Foto {idx + 1}</span>
-                              </a>
+                {/* Miniatura flotante al pasar el mouse */}
+                <div
+                  className="tooltip-miniatura"
+                  style={{
+                    display: "none",
+                    position: "absolute",
+                    bottom: "105%",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    padding: "4px",
+                    background: "#fff",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    zIndex: 100,
+                    width: "130px",
+                    height: "130px",
+                  }}
+                >
+                  <img
+                    src={urlFotoFinal}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      borderRadius: "4px",
+                    }}
+                    alt={`Preview ${idx + 1}`}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-                              <div
-                                className="tooltip-miniatura"
-                                style={{
-                                  display: "none",
-                                  position: "absolute",
-                                  bottom: "105%",
-                                  left: "50%",
-                                  transform: "translateX(-50%)",
-                                  padding: "4px",
-                                  background: "#fff",
-                                  border: "1px solid #cbd5e1",
-                                  borderRadius: "6px",
-                                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                                  zIndex: 100,
-                                  width: "130px",
-                                  height: "130px",
-                                }}
-                              >
-                                <img
-                                  src={urlFoto}
-                                  style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
-                                    borderRadius: "4px",
-                                  }}
-                                  alt={`Preview ${idx + 1}`}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <style>{`
-                  .link-evidencia-foto:hover {
-                    background-color: #e2e8f0 !important;
-                  }
-                  .link-evidencia-foto:hover + .tooltip-miniatura,
-                  .tooltip-miniatura:hover {
-                    display: block !important;
-                  }
-                `}</style>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+        {/* Estilo para activar el hover de la miniatura */}
+        <style>{`
+          .link-evidencia-foto:hover {
+            background-color: #e2e8f0 !important;
+          }
+          .link-evidencia-foto:hover + .tooltip-miniatura,
+          .tooltip-miniatura:hover {
+            display: block !important;
+          }
+        `}</style>
+      </div>
+    );
+  }
+  return null;
+})()}
               {/* DESCRIPCIÓN / SUCESO */}
               <div style={{ marginTop: "16px" }}>
                 <strong style={styles.sectionTitle}>
@@ -1780,7 +1875,7 @@ const handleGuardarCambios = async () => {
                   },
                   {
                     label: "Unidad:",
-                    value: `${registroEditar.placa_con_tipo ?? ""}`,
+                    value: `${registroEditar.vehiculos_json ?? ""}`,
                   },
                   {
                     label: "Efectivo PNP:",
@@ -2346,96 +2441,99 @@ const handleGuardarCambios = async () => {
             }}
           >
             {/* Mapeo de URLs / Base64 */}
-            {Array.isArray(fotosArray) &&
-              fotosArray.map((foto: any, index: number) => {
-                const urlFoto = typeof foto === "string" ? foto : (foto.url_imagen || foto.url);
-                return (
-                  <div
-                    key={index}
-                    style={{
-                      position: "relative",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "8px",
-                      backgroundColor: "#f8fafc",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "6px",
-                    }}
-                  >
-                    <a
-                      href={urlFoto}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: "600",
-                        color: "#024885",
-                        textDecoration: "none",
-                        cursor: "pointer",
-                      }}
-                      className="link-evidencia-edicion"
-                    >
-                      Ver Foto N° {index + 1}
-                    </a>
+         
+              {/* Mapeo de URLs / Base64 en Edición */}
+{Array.isArray(fotosArray) &&
+  fotosArray.map((foto: any, index: number) => {
+    // CAMBIO CLAVE: Usamos la función robusta para limpiar y validar la URL de R2 o local
+    const urlFoto = obtenerUrlFoto(foto);
 
-                    {/* Preview Flotante */}
-                    <div
-                      className="tooltip-miniatura-edicion"
-                      style={{
-                        display: "none",
-                        position: "absolute",
-                        right: "40px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        padding: "4px",
-                        background: "#fff",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "6px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                        zIndex: 100,
-                        width: "90px",
-                        height: "90px",
-                      }}
-                    >
-                      <img
-                        src={urlFoto}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: "4px",
-                        }}
-                        alt={`Preview ${index + 1}`}
-                      />
-                    </div>
+    return (
+      <div
+        key={index}
+        style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "8px",
+          backgroundColor: "#f8fafc",
+          border: "1px solid #cbd5e1",
+          borderRadius: "6px",
+        }}
+      >
+        <a
+          href={urlFoto}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: "12px",
+            fontWeight: "600",
+            color: "#024885",
+            textDecoration: "none",
+            cursor: "pointer",
+          }}
+          className="link-evidencia-edicion"
+        >
+          Ver Foto N° {index + 1}
+        </a>
 
-                    {/* Botón eliminar */}
-                    <button
-                      type="button"
-                      onClick={() => eliminarFoto(index)}
-                      style={{
-                        backgroundColor: "rgba(239,68,68,0.9)",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "50%",
-                        width: "22px",
-                        height: "22px",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: "bold",
-                      }}
-                      title="Eliminar foto"
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
+        {/* Preview Flotante */}
+        <div
+          className="tooltip-miniatura-edicion"
+          style={{
+            display: "none",
+            position: "absolute",
+            right: "40px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            padding: "4px",
+            background: "#fff",
+            border: "1px solid #cbd5e1",
+            borderRadius: "6px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            zIndex: 100,
+            width: "90px",
+            height: "90px",
+          }}
+        >
+          <img
+            src={urlFoto}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              borderRadius: "4px",
+            }}
+            alt={`Preview ${index + 1}`}
+          />
+        </div>
 
+        {/* Botón eliminar */}
+        <button
+          type="button"
+          onClick={() => eliminarFoto(index)}
+          style={{
+            backgroundColor: "rgba(239,68,68,0.9)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "50%",
+            width: "22px",
+            height: "22px",
+            fontSize: "12px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: "bold",
+          }}
+          title="Eliminar foto"
+        >
+          ×
+        </button>
+      </div>
+    );
+  })}
             {/* Botón agregar foto */}
             {fotosArray.length < 4 && (
               <button
@@ -2673,6 +2771,31 @@ const handleGuardarCambios = async () => {
         }}
         initialData={{ idTipo: "operador" }}
       />
+
+       <RegistroSerIn
+      visible={modalInsertOpen === "servicioIn"}
+       onClose={() => {
+          setModalInsertOpen(null);
+          setFiltro("TODOS");       // <-- Redirige a TODOS
+          setPaginaActual(1);
+          fetchOcurrencias(1, registrosPorPagina);
+          fetchTotalMisRegistros();
+        }}
+        initialData={{ idTipo: "servicioIn" }}
+      />
+
+
+       <RegistroSerFi
+        visible={modalInsertOpen === "servicioFi"}
+       onClose={() => {
+          setModalInsertOpen(null);
+          setFiltro("TODOS");       // <-- Redirige a TODOS
+          setPaginaActual(1);
+          fetchOcurrencias(1, registrosPorPagina);
+          fetchTotalMisRegistros();
+        }}
+        initialData={{ idTipo: "servicioFi" }}
+      />
     </div>
   );
 }
@@ -2727,20 +2850,25 @@ container: {
     flexDirection: "column",
     boxSizing: "border-box",
   },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "16px",
+ grid: {
+    display: "flex",          // Cambiamos de grid a flexbox horizontal
+    flexDirection: "row",     // Forzamos la orientación en una sola fila
+    gap: "12px",              // Espacio uniforme entre los botones
     marginBottom: "24px",
     flexShrink: 0,
+    width: "100%",
+    overflowX: "auto",        // Agrega scroll horizontal por seguridad si la pantalla es muy pequeña
   },
   card: {
-    padding: "18px",
+    flex: 1,                  // Hace que cada tarjeta o botón ocupe el mismo ancho proporcionalmente
+    minWidth: "140px",        // Ancho mínimo para que el contenido no se comprima demasiado
+    padding: "14px 10px",     // Padding optimizado para mantenerlos compactos
     borderRadius: "12px",
     color: "white",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
+    justifyContent: "center",
     border: "none",
     cursor: "pointer",
     boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
@@ -2847,7 +2975,7 @@ container: {
   },
   txtB: {
     fontSize: "13px",
-    fontWeight: "600",
+    fontWeight: "normal",
     color: "#1e293b",
     whiteSpace: "nowrap",
     overflow: "hidden",

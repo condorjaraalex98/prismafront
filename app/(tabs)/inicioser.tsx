@@ -42,7 +42,7 @@ interface Unidad {
   placa: string;
 }
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 type FotoEstado = {
   uri: string;
   url_remota: string | null;
@@ -102,6 +102,7 @@ const [fotos, setFotos] = useState<FotoEstado[]>([]);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [checklistRespuestas, setChecklistRespuestas] = useState<Record<number, Respuesta>>({});
   const [modalChecklistVisible, setModalChecklistVisible] = useState(false);
+  const [mostrarFallas, setMostrarFallas] = useState(false);
   const [odometroInicial, setOdometroInicial] = useState("");
   const [unidadTemporal, setUnidadTemporal] = useState<any>(null);
 
@@ -1051,7 +1052,8 @@ const seleccionarGaleria = async () => {
         </ScrollView>
   
         {/* MODAL CHECKLIST */}
-        <Modal animationType="slide" transparent visible={modalChecklistVisible} onRequestClose={() => setModalChecklistVisible(false)}>
+   {/* MODAL CHECKLIST */}
+        <Modal animationType="slide" transparent visible={modalChecklistVisible} onRequestClose={() => { setModalChecklistVisible(false); setMostrarFallas(false); }}>
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { width: "94%", maxHeight: "90%", padding: 0 }]}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: "#eee" }}>
@@ -1059,13 +1061,14 @@ const seleccionarGaleria = async () => {
                   <ThemedText style={{ fontSize: 18, fontWeight: "bold", color: MJM_BLUE }}>📋 CHECKLIST OPERATIVO</ThemedText>
                   <ThemedText style={{ fontSize: 12, color: "#666" }}>UNIDAD: {unidadTemporal?.placa}</ThemedText>
                 </View>
-                <Pressable onPress={() => setModalChecklistVisible(false)} style={{ padding: 8, backgroundColor: "#f0f0f0", borderRadius: 20 }}>
+                <Pressable onPress={() => { setModalChecklistVisible(false); setMostrarFallas(false); }} style={{ padding: 8, backgroundColor: "#f0f0f0", borderRadius: 20 }}>
                   <Ionicons name="close" size={20} color="#333" />
                 </Pressable>
               </View>
   
               <ScrollView style={{ padding: 20 }} showsVerticalScrollIndicator={false}>
-                <View style={{ marginBottom: 25 }}>
+                {/* Campo de Odómetro Inicial (Siempre visible) */}
+                <View style={{ marginBottom: 20 }}>
                   <ThemedText style={{ fontSize: 10, color: MJM_BLUE, fontWeight: "bold" }}>ODÓMETRO INICIAL</ThemedText>
                   <TextInput
                     style={[styles.modalInputText, { backgroundColor: "#f8fafc", fontSize: 16 }]}
@@ -1075,69 +1078,98 @@ const seleccionarGaleria = async () => {
                     onChangeText={(text) => setOdometroInicial(text.replace(/[^0-9]/g, ""))}
                   />
                 </View>
-  
-                {Object.entries(
-                  (checklistItems || []).reduce((acc: Record<string, any[]>, item: any) => {
-                    const cat = item.nombre_categoria || "GENERAL";
-                    if (!acc[cat]) acc[cat] = [];
-                    acc[cat].push(item);
-                    return acc;
-                  }, {})
-                ).map(([categoria, items]) => (
-                  <View key={categoria} style={{ marginBottom: 20 }}>
-                    <ThemedText style={{ fontSize: 12, fontWeight: "800", color: MJM_BLUE, marginBottom: 10, backgroundColor: "#eef2ff", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 }}>
-                      {categoria.toUpperCase()}
+
+                {/* Botón desplegable para Reportar Falla */}
+                <Pressable
+                  style={{
+                    backgroundColor: mostrarFallas ? "#fee2e2" : "#f1f5f9",
+                    padding: 14,
+                    borderRadius: 12,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: mostrarFallas ? "#fca5a5" : "#cbd5e1",
+                    marginBottom: 20,
+                  }}
+                  onPress={() => setMostrarFallas(!mostrarFallas)}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="alert-circle-outline" size={20} color={mostrarFallas ? "#dc2626" : MJM_BLUE} />
+                    <ThemedText style={{ fontSize: 13, fontWeight: "bold", color: mostrarFallas ? "#991b1b" : MJM_BLUE }}>
+                      {mostrarFallas ? "Ocultar Reporte de Fallas" : "Reportar Falla (Opcional)"}
                     </ThemedText>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-                      {items.map((item: any) => {
-                        const resp = checklistRespuestas[item.id_item] || { conforme: true, obs: "" };
-                        return (
-                          <View key={item.id_item} style={{ width: "48%", marginBottom: 15 }}>
-                            <Pressable
-                              style={{
-                                alignItems: "center",
-                                justifyContent: "center",
-                                backgroundColor: resp.conforme ? "#fff" : "#fff5f5",
-                                padding: 10,
-                                borderRadius: 12,
-                                borderWidth: 1,
-                                borderColor: resp.conforme ? "#e2e8f0" : "#feb2b2",
-                                minHeight: 85,
-                              }}
-                              onPress={() =>
-                                setChecklistRespuestas((prev) => ({
-                                  ...prev,
-                                  [item.id_item]: {
-                                    conforme: !(prev[item.id_item]?.conforme ?? true),
-                                    obs: !(prev[item.id_item]?.conforme ?? true) ? "" : prev[item.id_item]?.obs || "",
-                                  },
-                                }))
-                              }
-                            >
-                              <Ionicons name={resp.conforme ? "checkmark-circle" : "alert-circle"} size={28} color={resp.conforme ? "#22c55e" : "#ef4444"} />
-                              <ThemedText style={{ fontSize: 11, textAlign: "center", marginTop: 6, color: resp.conforme ? "#334155" : "#c53030" }}>
-                                {item.nombre_item}
-                              </ThemedText>
-                            </Pressable>
-                            {!resp.conforme && (
-                              <TextInput
-                                style={{ marginTop: 5, backgroundColor: "#fff", borderWidth: 1, borderColor: "#feb2b2", padding: 8, borderRadius: 8, fontSize: 10 }}
-                                placeholder="Falla..."
-                                value={resp.obs}
-                                onChangeText={(text) =>
-                                  setChecklistRespuestas((prev) => ({
-                                    ...prev,
-                                    [item.id_item]: { conforme: false, obs: text },
-                                  }))
-                                }
-                              />
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
                   </View>
-                ))}
+                  <Ionicons name={mostrarFallas ? "chevron-up" : "chevron-down"} size={20} color={mostrarFallas ? "#991b1b" : "#64748b"} />
+                </Pressable>
+
+                {/* Checklist desplegable de fallas */}
+                {mostrarFallas && (
+                  <View>
+                    {Object.entries(
+                      (checklistItems || []).reduce((acc: Record<string, any[]>, item: any) => {
+                        const cat = item.nombre_categoria || "GENERAL";
+                        if (!acc[cat]) acc[cat] = [];
+                        acc[cat].push(item);
+                        return acc;
+                      }, {})
+                    ).map(([categoria, items]) => (
+                      <View key={categoria} style={{ marginBottom: 20 }}>
+                        <ThemedText style={{ fontSize: 12, fontWeight: "800", color: MJM_BLUE, marginBottom: 10, backgroundColor: "#eef2ff", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 }}>
+                          {categoria.toUpperCase()}
+                        </ThemedText>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
+                          {items.map((item: any) => {
+                            const resp = checklistRespuestas[item.id_item] || { conforme: true, obs: "" };
+                            return (
+                              <View key={item.id_item} style={{ width: "48%", marginBottom: 15 }}>
+                                <Pressable
+                                  style={{
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    backgroundColor: resp.conforme ? "#fff" : "#fff5f5",
+                                    padding: 10,
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: resp.conforme ? "#e2e8f0" : "#feb2b2",
+                                    minHeight: 85,
+                                  }}
+                                  onPress={() =>
+                                    setChecklistRespuestas((prev) => ({
+                                      ...prev,
+                                      [item.id_item]: {
+                                        conforme: !(prev[item.id_item]?.conforme ?? true),
+                                        obs: !(prev[item.id_item]?.conforme ?? true) ? "" : prev[item.id_item]?.obs || "",
+                                      },
+                                    }))
+                                  }
+                                >
+                                  <Ionicons name={resp.conforme ? "checkmark-circle" : "alert-circle"} size={28} color={resp.conforme ? "#22c55e" : "#ef4444"} />
+                                  <ThemedText style={{ fontSize: 11, textAlign: "center", marginTop: 6, color: resp.conforme ? "#334155" : "#c53030" }}>
+                                    {item.nombre_item}
+                                  </ThemedText>
+                                </Pressable>
+                                {!resp.conforme && (
+                                  <TextInput
+                                    style={{ marginTop: 5, backgroundColor: "#fff", borderWidth: 1, borderColor: "#feb2b2", padding: 8, borderRadius: 8, fontSize: 10 }}
+                                    placeholder="Falla..."
+                                    value={resp.obs}
+                                    onChangeText={(text) =>
+                                      setChecklistRespuestas((prev) => ({
+                                        ...prev,
+                                        [item.id_item]: { conforme: false, obs: text },
+                                      }))
+                                    }
+                                  />
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </ScrollView>
   
               <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: "#eee" }}>

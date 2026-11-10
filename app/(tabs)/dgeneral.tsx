@@ -24,7 +24,7 @@ import { Dropdown } from "react-native-element-dropdown";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/userContext";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 type FotoEstado = {
   uri: string;
   url_remota: string | null;
@@ -377,38 +377,50 @@ const confirmIOSSelection = () => {
   const obtenerGpsAutomatico = async () => {
     try {
       let lat, lon;
+      let direccionNombre = "";
+
       if (Platform.OS === "web") {
         lat = -12.073769;
         lon = -77.039673;
+        direccionNombre = "CSI MDJM (Web Default)";
       } else {
         let { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") return;
+        if (status !== "granted") {
+          throw new Error("Permiso de ubicación denegado");
+        }
+        
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
         lat = loc.coords.latitude;
         lon = loc.coords.longitude;
+
+        const reverseGeocode = await Location.reverseGeocodeAsync({
+          latitude: lat,
+          longitude: lon,
+        });
+        if (reverseGeocode.length > 0) {
+          const p = reverseGeocode[0];
+          direccionNombre = `${p.street || ""} ${p.streetNumber || ""}, ${p.district || p.city || ""}`.trim();
+        }
       }
+
       setForm((prev) => ({
         ...prev,
         latitud_gps: lat.toString(),
         longitud_gps: lon.toString(),
+        nombre_punto_gps: direccionNombre || "Ubicación identificada",
       }));
-      const reverseGeocode = await Location.reverseGeocodeAsync({
-        latitude: lat,
-        longitude: lon,
-      });
-      if (reverseGeocode.length > 0) {
-        const p = reverseGeocode[0];
-        const direccionNombre =
-          `${p.street || ""} ${p.streetNumber || ""}, ${p.district || p.city || ""}`.trim();
-        setForm((prev) => ({
-          ...prev,
-          nombre_punto_gps: direccionNombre || "Ubicación identificada",
-        }));
-      }
     } catch (e) {
-      console.error("Error GPS:", e);
+      console.log("GPS no disponible, usando coordenadas por defecto:", e);
+      
+      // 📌 COORDENADAS POR DEFECTO (Ejemplo: Jesús María / Base central)
+      setForm((prev) => ({
+        ...prev,
+        latitud_gps: "-12.073769",
+        longitud_gps: "-77.039673",
+        nombre_punto_gps: "CSI MDJM (Ubicación por defecto)",
+      }));
     }
   };
 
@@ -1666,7 +1678,7 @@ const seleccionarGaleria = async () => {
                                                   borderRadius: 10,
                                                 },
                                               ]}
-                                              placeholder="Ej: A media cuadra del grifo Primax..."
+                                              placeholder="Ej: Escriba una referencia cercana o indique el númeral exacto si lo conoce."
                                               placeholderTextColor="#AAA"
                                               value={form.referencia}
                                               onChangeText={(t) => setForm({ ...form, referencia: t })}

@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import * as XLSX from "xlsx";
 
-const API_BASE = "http://192.168.100.15:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
 
 const ThemedText = ({ style, children, ...props }: any) => (
@@ -67,7 +67,7 @@ export default function LugarScreen() {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  // Modales y Alertas
+  // Modales y Mapa
   const [customAlert, setCustomAlert] = useState({
     visible: false,
     title: "",
@@ -80,9 +80,13 @@ export default function LugarScreen() {
   const [modalCrearVisible, setModalCrearVisible] = useState(false);
   const [nuevoLugar, setNuevoLugar] = useState<any>(INITIAL_LUGAR_STATE);
 
-  // 1. Cargar Catálogos mapeando la respuesta exacta del backend
+  // Estado para el Modal del Mapa (Leaflet Web / Info Móvil)
+  const [modalMapaVisible, setModalMapaVisible] = useState(false);
+  const [modoMapa, setModoMapa] = useState<"crear" | "editar">("crear");
+
+  // 1. Cargar Catálogos
   useEffect(() => {
-    fetch(`${API_BASE}/lugar-catalogos`)
+    fetch(`${API_URL}/lugar-catalogos`)
       .then((res) => res.json())
       .then((data) => {
         const tLugares = data.tiposLugar || [];
@@ -95,7 +99,6 @@ export default function LugarScreen() {
         setVias(listaVias);
         setCuadras(listaCuadras);
 
-        // Selección inicial por defecto para inserción
         const defTipoLugar = tLugares[0]?.id_tipo || null;
         const defTipoVia = tVias[0]?.id_tipo_via || null;
         const viasDelTipo = listaVias.filter((v: any) => v.id_tipo_via === defTipoVia);
@@ -114,7 +117,7 @@ export default function LugarScreen() {
       .catch((e) => console.error("❌ Error cargando catálogos de lugares:", e));
   }, []);
 
-  // Filtrar vías dinámicamente según el tipo de vía (NUEVO REGISTRO)
+  // Filtrar vías dinámicamente (NUEVO REGISTRO)
   const handleTipoViaChangeCrear = (idTipoVia: number) => {
     const filtradas = vias.filter((v) => v.id_tipo_via === idTipoVia);
     setViasFiltradasNuevo(filtradas);
@@ -125,7 +128,7 @@ export default function LugarScreen() {
     }));
   };
 
-  // Filtrar vías dinámicamente según el tipo de vía (EDICIÓN)
+  // Filtrar vías dinámicamente (EDICIÓN)
   const handleTipoViaChangeEditar = (idTipoVia: number) => {
     const filtradas = vias.filter((v) => v.id_tipo_via === idTipoVia);
     setViasFiltradasEdit(filtradas);
@@ -173,7 +176,7 @@ export default function LugarScreen() {
           page: nextPage.toString(),
         });
 
-        const res = await fetch(`${API_BASE}/lugarestotal?${query}`);
+        const res = await fetch(`${API_URL}/lugarestotal?${query}`);
         const result = await res.json();
 
         setCounts({
@@ -216,7 +219,7 @@ export default function LugarScreen() {
         export: "true",
       });
 
-      const res = await fetch(`${API_BASE}/lugarestotal?${query}`);
+      const res = await fetch(`${API_URL}/lugarestotal?${query}`);
       const result = await res.json();
       const dataCompleta = result.data || [];
 
@@ -258,7 +261,7 @@ export default function LugarScreen() {
     if (!lugarEdit) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/updatelugar/${lugarEdit.id_lugar}`, {
+      const res = await fetch(`${API_URL}/updatelugar/${lugarEdit.id_lugar}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(lugarEdit),
@@ -298,11 +301,11 @@ export default function LugarScreen() {
 
   // Crear Registro Nuevo
   const handleGuardarNuevo = async () => {
-    if (!nuevoLugar.id_tipo_lugar || !nuevoLugar.id_via || !nuevoLugar.id_cuadra) {
+    if (!nuevoLugar.id_tipo_lugar || !nuevoLugar.id_via) {
       setCustomAlert({
         visible: true,
         title: "Campos Obligatorios",
-        message: "Por favor seleccione Tipo de Lugar, Vía y Cuadra.",
+        message: "Por favor seleccione Tipo de Lugar y Vía.",
         type: "error",
       });
       return;
@@ -310,7 +313,7 @@ export default function LugarScreen() {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/insertlugar`, {
+      const res = await fetch(`${API_URL}/insertlugar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nuevoLugar),
@@ -366,13 +369,80 @@ export default function LugarScreen() {
     </View>
   );
 
+  // HTML estático de Leaflet para Web (OpenStreetMap)
+  const getLeafletWebHtml = (lat: number, lng: number) => `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        html, body, #map { height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
+        .info-box { position: absolute; top: 10px; right: 10px; z-index: 1000; background: white; padding: 8px 12px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-size: 12px; font-weight: bold; color: #024885; }
+      </style>
+    </head>
+    <body>
+      <div class="info-box">📍 Haz clic en el mapa para fijar coordenadas</div>
+      <div id="map"></div>
+      <script>
+        var lat = ${lat || -12.065247};
+        var lng = ${lng || -77.044894};
+        var map = L.map('map').setView([lat, lng], 16);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        var marker = L.marker([lat, lng], {draggable: true}).addTo(map);
+
+        function updateCoords(newLat, newLng) {
+          marker.setLatLng([newLat, newLng]);
+          if (window.parent) {
+            window.parent.postMessage({ type: 'LEAFLET_COORD', lat: newLat, lng: newLng }, '*');
+          }
+        }
+
+        map.on('click', function(e) {
+          updateCoords(e.latlng.lat, e.latlng.lng);
+        });
+
+        marker.on('dragend', function(e) {
+          var coord = marker.getLatLng();
+          updateCoords(coord.lat, coord.lng);
+        });
+      </script>
+    </body>
+    </html>
+  `;
+
+  // Listener de eventos para Leaflet en Web
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      const handleMessage = (event: any) => {
+        if (event.data && event.data.type === "LEAFLET_COORD") {
+          const { lat, lng } = event.data;
+          if (modoMapa === "editar") {
+            setLugarEdit((prev: any) => (prev ? { ...prev, latitud: lat, longitud: lng } : prev));
+          } else {
+            setNuevoLugar((prev: any) => ({ ...prev, latitud: lat, longitud: lng }));
+          }
+        }
+      };
+      window.addEventListener("message", handleMessage);
+      return () => window.removeEventListener("message", handleMessage);
+    }
+  }, [modoMapa]);
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* HEADER */}
+      {/* HEADER - RESPONSIVO (Basado en el diseño probado en PNP) */}
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <ThemedText style={styles.headerTitle}>Catálogo Lugares</ThemedText>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 }}>
+            <ThemedText style={styles.headerTitle}>Cat. Lugares</ThemedText>
             {Platform.OS === "web" && (
               <TouchableOpacity
                 onPress={exportarExcel}
@@ -384,8 +454,8 @@ export default function LugarScreen() {
             <View style={styles.estadoToggle}>
               {[
                 { id: "TODOS", l: "TODOS", c: counts.total },
-                { id: "1", l: "ACTIVOS", c: counts.activos },
-                { id: "0", l: "INACTIVOS", c: counts.inactivos },
+                { id: "1", l: "ACT.", c: counts.activos },
+                { id: "0", l: "INAC.", c: counts.inactivos },
               ].map((e) => (
                 <TouchableOpacity
                   key={e.id}
@@ -393,7 +463,7 @@ export default function LugarScreen() {
                   style={[styles.btnEstado, estadoSel === e.id && styles.btnEstadoActive]}
                 >
                   <Text style={[styles.btnText, estadoSel === e.id && { color: "white" }]}>
-                    {e.l} ({e.c})
+                    {e.l} {e.c}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -447,21 +517,34 @@ export default function LugarScreen() {
         </View>
       </View>
 
-      {/* ENCABEZADO ESCRITORIO */}
+      {/* ENCABEZADO ESCRITORIO CON VÍA Y CUADRA EN COLUMNAS SEPARADAS */}
       {isDesktop && (
         <View style={styles.tableHeader}>
           <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 0.5, textAlign: "center" }]}>
             ID
           </Text>
-          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 1.3 }]}>NOMBRE LUGAR</Text>
-          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 1.2 }]}>TIPO LUGAR</Text>
-          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 1.5 }]}>VÍA / CUADRA</Text>
-          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 1.2 }]}>UNIDAD ENCARGADA</Text>
-          <Text style={[styles.cell, styles.headerText, { flex: 0.8, textAlign: "center" }]}>ESTADO</Text>
+          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 1.3, textAlign: "center" }]}>
+            NOMBRE LUGAR
+          </Text>
+          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 1.2, textAlign: "center" }]}>
+            TIPO LUGAR
+          </Text>
+          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 1.5, textAlign: "center" }]}>
+            VÍA
+          </Text>
+          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 0.8, textAlign: "center" }]}>
+            CUADRA
+          </Text>
+          <Text style={[styles.cell, styles.cellBorder, styles.headerText, { flex: 1.2, textAlign: "center" }]}>
+            UNIDAD ENCARGADA
+          </Text>
+          <Text style={[styles.cell, styles.headerText, { flex: 0.8, textAlign: "center" }]}>
+            ESTADO
+          </Text>
         </View>
       )}
 
-      {/* LISTADO */}
+      {/* LISTADO DE LUGARES */}
       <FlatList
         data={lugares}
         keyExtractor={(item, index) => `${item.id_lugar}-${index}`}
@@ -484,7 +567,10 @@ export default function LugarScreen() {
                   {item.tipo_descripcion || `Tipo #${item.id_tipo_lugar}`}
                 </Text>
                 <Text style={[styles.cell, styles.cellBorder, { flex: 1.5 }]} numberOfLines={1}>
-                  {item.nombre_via ? `${item.nombre_via} Cdra. ${item.numero_cuadra}` : `Vía ${item.id_via}`}
+                  {item.nombre_via || `Vía ${item.id_via}`}
+                </Text>
+                <Text style={[styles.cell, styles.cellBorder, { flex: 0.8, textAlign: "center" }]} numberOfLines={1}>
+                  {item.numero_cuadra ? `Cdra. ${item.numero_cuadra}` : "-"}
                 </Text>
                 <Text style={[styles.cell, styles.cellBorder, { flex: 1.2 }]} numberOfLines={1}>
                   {item.unidad_encargada || "-"}
@@ -497,12 +583,12 @@ export default function LugarScreen() {
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: "bold", fontSize: 13, color: "#0F172A" }}>
-                    #{item.id_lugar} - {item.nombre_lugar || "Sin nombre"}
+                 {item.nombre_lugar || "Sin nombre"}
                   </Text>
-                  <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
-                    {item.nombre_via} Cdra. {item.numero_cuadra} ({item.tipo_descripcion})
+                  <Text style={{ fontSize: 11, color: "#0F172A", marginTop: 2 }}>
+                    ({item.tipo_descripcion})
                   </Text>
-                  <Text style={{ fontSize: 10, color: "#64748B", marginTop: 1 }}>
+                  <Text style={{ fontSize: 10, color: "#0F172A", marginTop: 1 }}>
                     Encargada: {item.unidad_encargada || "N/A"}
                   </Text>
                 </View>
@@ -511,7 +597,7 @@ export default function LugarScreen() {
             )}
           </TouchableOpacity>
         )}
-        ListFooterComponent={loading ? <ActivityIndicator size="small" color={MJM_BLUE} style={{ margin: 15 }} /> : null}
+        ListFooterComponent={loading ? <ActivityIndicator size="small" color={MJM_BLUE} style={{ margin: 15 }} /> : undefined}
       />
 
       {/* MODAL EDITAR LUGAR */}
@@ -519,80 +605,93 @@ export default function LugarScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Editar Lugar #{lugarEdit?.id_lugar}</ThemedText>
+              <ThemedText style={styles.headerTitle}>Editar - {lugarEdit?.nombre_lugar}</ThemedText>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
             </View>
             {lugarEdit && (
               <ScrollView showsVerticalScrollIndicator={false}>
-                <ThemedText style={styles.label}>Nombre de Lugar</ThemedText>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Ej: PARQUE CENTRAL"
-                  value={lugarEdit.nombre_lugar}
-                  onChangeText={(t) => setLugarEdit({ ...lugarEdit, nombre_lugar: t })}
-                />
+               
 
                 <ThemedText style={styles.label}>Tipo Lugar *</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={lugarEdit.id_tipo_lugar}
-                    onValueChange={(val) => setLugarEdit({ ...lugarEdit, id_tipo_lugar: Number(val) })}
-                  >
-                    {tiposLugar.map((t) => (
-                      <Picker.Item key={t.id_tipo} label={t.nombre_tipo} value={t.id_tipo} />
-                    ))}
-                  </Picker>
-                </View>
+              <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={lugarEdit.id_tipo_lugar ? String(lugarEdit.id_tipo_lugar) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setLugarEdit({ ...lugarEdit, id_tipo_lugar: val ? Number(val) : null })}
+  >
+    <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+    {tiposLugar.map((t: any) => (
+      <Picker.Item key={String(t.id_tipo)} label={t.nombre_tipo || ""} value={String(t.id_tipo)} color="#000000" />
+    ))}
+  </Picker>
+</View>
 
+                {/* TIPO DE VÍA */}
                 <ThemedText style={styles.label}>Tipo de Vía *</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={lugarEdit.id_tipo_via}
-                    onValueChange={(val) => handleTipoViaChangeEditar(Number(val))}
-                  >
-                    {tiposVia.map((tv) => (
-                      <Picker.Item key={tv.id_tipo_via} label={tv.abreviatura} value={tv.id_tipo_via} />
-                    ))}
-                  </Picker>
-                </View>
+             <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={lugarEdit.id_tipo_via ? String(lugarEdit.id_tipo_via) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => handleTipoViaChangeEditar(val ? Number(val) : 0)}
+  >
+    <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+    {tiposVia.map((tv: any) => (
+      <Picker.Item key={String(tv.id_tipo_via)} label={tv.abreviatura || ""} value={String(tv.id_tipo_via)} color="#000000" />
+    ))}
+  </Picker>
+</View>
 
-                <ThemedText style={styles.label}>Vía *</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={lugarEdit.id_via}
-                    onValueChange={(val) => setLugarEdit({ ...lugarEdit, id_via: Number(val) })}
-                  >
-                    {viasFiltradasEdit.map((v) => (
-                      <Picker.Item key={v.id_via} label={v.nombre_via} value={v.id_via} />
-                    ))}
-                  </Picker>
-                </View>
+                <Text style={{ fontSize: 11, color: MJM_BLUE, fontWeight: "bold", marginTop: 4 }}>
+                  🔍 Vías disponibles para este tipo: ({viasFiltradasEdit.length})
+                </Text>
 
-                <ThemedText style={styles.label}>Cuadra *</ThemedText>
-                <View style={styles.modalPickerContainer}>
-              <Picker
-  selectedValue={nuevoLugar.id_cuadra !== null && nuevoLugar.id_cuadra !== undefined ? nuevoLugar.id_cuadra : ""}
-  onValueChange={(val) => {
-    // Si el usuario elige la opción vacía, guardamos null para la base de datos
-    const nuevoValor = val === "" || val === null || val === undefined ? null : Number(val);
-    setNuevoLugar({ ...nuevoLugar, id_cuadra: nuevoValor });
-  }}
->
-  {/* Opción por defecto */}
-  <Picker.Item label="-- Selecciona una cuadra (Opcional) --" value="" />
+                {/* VÍA Y CUADRA EN 2 COLUMNAS */}
+               <View style={{ flexDirection: "row", gap: 10, marginTop: 2 }}>
+  <View style={{ flex: 1.2 }}>
+    <ThemedText style={styles.label}>Vía *</ThemedText>
+    <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+      <Picker
+        selectedValue={lugarEdit.id_via ? String(lugarEdit.id_via) : ""}
+        style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+        itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+        dropdownIconColor="#000000"
+        onValueChange={(val) => setLugarEdit({ ...lugarEdit, id_via: val ? Number(val) : null })}
+      >
+        <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+        {viasFiltradasEdit.map((v: any) => (
+          <Picker.Item key={String(v.id_via)} label={v.nombre_via || ""} value={String(v.id_via)} color="#000000" />
+        ))}
+      </Picker>
+    </View>
+  </View>
 
-  {/* Tus cuadras mapeadas */}
-  {cuadras.map((c) => (
-    <Picker.Item 
-      key={c.id_cuadra} 
-      label={`Cuadra ${c.numero_cuadra}`} 
-      value={c.id_cuadra} 
-    />
-  ))}
-</Picker>
-                </View>
+  <View style={{ flex: 0.8 }}>
+    <ThemedText style={styles.label}>Cuadra</ThemedText>
+    <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+      <Picker
+        selectedValue={lugarEdit.id_cuadra !== null && lugarEdit.id_cuadra !== undefined ? String(lugarEdit.id_cuadra) : ""}
+        style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+        itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+        dropdownIconColor="#000000"
+        onValueChange={(val) => {
+          const nuevoValor = val === "" || val === null || val === undefined ? null : Number(val);
+          setLugarEdit({ ...lugarEdit, id_cuadra: nuevoValor });
+        }}
+      >
+        <Picker.Item label="-- Opcional --" value="" color="#888888" />
+        {cuadras.map((c: any) => (
+          <Picker.Item key={String(c.id_cuadra)} label={`N° ${c.numero_cuadra}`} value={String(c.id_cuadra)} color="#000000" />
+        ))}
+      </Picker>
+    </View>
+  </View>
+</View>
 
                 <ThemedText style={styles.label}>Unidad Encargada</ThemedText>
                 <TextInput
@@ -602,55 +701,65 @@ export default function LugarScreen() {
                   onChangeText={(t) => setLugarEdit({ ...lugarEdit, unidad_encargada: t })}
                 />
 
+                {/* BOTÓN MAPA Y COORDENADAS */}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+                  <ThemedText style={styles.label}>Coordenadas GPS</ThemedText>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setModoMapa("editar");
+                      setModalMapaVisible(true);
+                    }}
+                    style={{ flexDirection: "row", alignItems: "center", backgroundColor: MJM_BLUE, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
+                  >
+                    <Ionicons name="map" size={14} color="white" style={{ marginRight: 4 }} />
+                    <Text style={{ color: "white", fontSize: 11, fontWeight: "bold" }}>Ver Mapa</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <ThemedText style={styles.label}>Latitud</ThemedText>
-                 <TextInput
-  style={styles.modalInput}
-  keyboardType="numeric"
-  // Si es null o undefined, mostramos un string vacío para que el input se vea limpio
-  value={lugarEdit.latitud !== null && lugarEdit.latitud !== undefined ? String(lugarEdit.latitud) : ""}
-  onChangeText={(t) => {
-    // Si el usuario borra todo y el texto queda vacío, guardamos null
-    // Si escribe algo, lo convertimos a número flotante
-    const nuevoValor = t.trim() === "" ? null : parseFloat(t);
-    setLugarEdit({ ...lugarEdit, latitud: isNaN(nuevoValor!) ? null : nuevoValor });
-  }}
-/>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Latitud"
+                      keyboardType="numeric"
+                      value={lugarEdit.latitud !== null && lugarEdit.latitud !== undefined ? String(lugarEdit.latitud) : ""}
+                      onChangeText={(t) => {
+                        const nuevoValor = t.trim() === "" ? null : parseFloat(t);
+                        setLugarEdit({ ...lugarEdit, latitud: isNaN(nuevoValor!) ? null : nuevoValor });
+                      }}
+                    />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <ThemedText style={styles.label}>Longitud</ThemedText>
-                   <TextInput
-  style={styles.modalInput}
-  keyboardType="numeric"
-  // Si es null o undefined, mostramos un string vacío; si no, lo convertimos a texto
-  value={lugarEdit.longitud !== null && lugarEdit.longitud !== undefined ? String(lugarEdit.longitud) : ""}
-  onChangeText={(t) => {
-    // Si el usuario borra todo, guardamos null; si escribe algo, lo convertimos a número flotante
-    const nuevoValor = t.trim() === "" ? null : parseFloat(t);
-    setLugarEdit({ ...lugarEdit, longitud: isNaN(nuevoValor!) ? null : nuevoValor });
-  }}
-/>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Longitud"
+                      keyboardType="numeric"
+                      value={lugarEdit.longitud !== null && lugarEdit.longitud !== undefined ? String(lugarEdit.longitud) : ""}
+                      onChangeText={(t) => {
+                        const nuevoValor = t.trim() === "" ? null : parseFloat(t);
+                        setLugarEdit({ ...lugarEdit, longitud: isNaN(nuevoValor!) ? null : nuevoValor });
+                      }}
+                    />
                   </View>
                 </View>
 
                 <ThemedText style={styles.label}>Estado</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={lugarEdit.estado}
-                    onValueChange={(val) => setLugarEdit({ ...lugarEdit, estado: Number(val) })}
-                  >
-                    <Picker.Item label="ACTIVO" value={1} />
-                    <Picker.Item label="INACTIVO" value={0} />
-                  </Picker>
-                </View>
+                <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={lugarEdit.estado !== null && lugarEdit.estado !== undefined ? String(lugarEdit.estado) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setLugarEdit({ ...lugarEdit, estado: val !== "" && val !== null ? Number(val) : 0 })}
+  >
+    <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+    <Picker.Item label="ACTIVO" value="1" color="#000000" />
+    <Picker.Item label="INACTIVO" value="0" color="#000000" />
+  </Picker>
+</View>
 
                 <TouchableOpacity style={styles.btnGuardar} onPress={handleGuardarCambios} disabled={loading}>
-                  {loading ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <ThemedText style={{ color: "white", fontWeight: "bold" }}>GUARDAR CAMBIOS</ThemedText>
-                  )}
+                  {loading ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: "white", fontWeight: "bold" }}>GUARDAR CAMBIOS</ThemedText>}
                 </TouchableOpacity>
               </ScrollView>
             )}
@@ -663,79 +772,91 @@ export default function LugarScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Nuevo Lugar</ThemedText>
+              <ThemedText style={styles.headerTitle}>Nuevo Lugar</ThemedText>
               <TouchableOpacity onPress={() => setModalCrearVisible(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <ThemedText style={styles.label}>Nombre de Lugar</ThemedText>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Ej: PLAZA PRINCIPAL"
-                value={nuevoLugar.nombre_lugar}
-                onChangeText={(t) => setNuevoLugar({ ...nuevoLugar, nombre_lugar: t })}
-              />
-
+             
               <ThemedText style={styles.label}>Tipo Lugar *</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevoLugar.id_tipo_lugar}
-                  onValueChange={(val) => setNuevoLugar({ ...nuevoLugar, id_tipo_lugar: Number(val) })}
-                >
-                  {tiposLugar.map((t) => (
-                    <Picker.Item key={t.id_tipo} label={t.nombre_tipo} value={t.id_tipo} />
-                  ))}
-                </Picker>
-              </View>
+              <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={nuevoLugar.id_tipo_lugar !== null && nuevoLugar.id_tipo_lugar !== undefined ? String(nuevoLugar.id_tipo_lugar) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setNuevoLugar({ ...nuevoLugar, id_tipo_lugar: val ? Number(val) : null })}
+  >
+    <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+    {tiposLugar.map((t: any) => (
+      <Picker.Item key={String(t.id_tipo)} label={t.nombre_tipo || ""} value={String(t.id_tipo)} color="#000000" />
+    ))}
+  </Picker>
+</View>
 
+              {/* TIPO DE VÍA */}
               <ThemedText style={styles.label}>Tipo de Vía *</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevoLugar.id_tipo_via}
-                  onValueChange={(val) => handleTipoViaChangeCrear(Number(val))}
-                >
-                  {tiposVia.map((tv) => (
-                    <Picker.Item key={tv.id_tipo_via} label={tv.abreviatura} value={tv.id_tipo_via} />
-                  ))}
-                </Picker>
-              </View>
+            <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={nuevoLugar.id_tipo_via !== null && nuevoLugar.id_tipo_via !== undefined ? String(nuevoLugar.id_tipo_via) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => handleTipoViaChangeCrear(val ? Number(val) : 0)}
+  >
+    <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+    {tiposVia.map((tv: any) => (
+      <Picker.Item key={String(tv.id_tipo_via)} label={tv.abreviatura || ""} value={String(tv.id_tipo_via)} color="#000000" />
+    ))}
+  </Picker>
+</View>
 
-              <ThemedText style={styles.label}>Vía *</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevoLugar.id_via}
-                  onValueChange={(val) => setNuevoLugar({ ...nuevoLugar, id_via: Number(val) })}
-                >
-                  {viasFiltradasNuevo.map((v) => (
-                    <Picker.Item key={v.id_via} label={v.nombre_via} value={v.id_via} />
-                  ))}
-                </Picker>
-              </View>
+              <Text style={{ fontSize: 11, color: MJM_BLUE, fontWeight: "bold", marginTop: 4 }}>
+                🔍 Vías disponibles para este tipo: ({viasFiltradasNuevo.length})
+              </Text>
 
-              <ThemedText style={styles.label}>Cuadra *</ThemedText>
-              <View style={styles.modalPickerContainer}>
-             <Picker
-  selectedValue={nuevoLugar.id_cuadra !== null && nuevoLugar.id_cuadra !== undefined ? nuevoLugar.id_cuadra : ""}
-  onValueChange={(val) => {
-    // Si el usuario elige la opción vacía, guardamos null para la base de datos
-    const nuevoValor = val === "" || val === null || val === undefined ? null : Number(val);
-    setNuevoLugar({ ...nuevoLugar, id_cuadra: nuevoValor });
-  }}
->
-  {/* Opción por defecto */}
-  <Picker.Item label="-- Selecciona una cuadra (Opcional) --" value="" />
+              {/* VÍA Y CUADRA EN 2 COLUMNAS */}
+           <View style={{ flexDirection: "row", gap: 10, marginTop: 2 }}>
+  <View style={{ flex: 1.2 }}>
+    <ThemedText style={styles.label}>Vía *</ThemedText>
+    <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+      <Picker
+        selectedValue={nuevoLugar.id_via !== null && nuevoLugar.id_via !== undefined ? String(nuevoLugar.id_via) : ""}
+        style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+        itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+        dropdownIconColor="#000000"
+        onValueChange={(val) => setNuevoLugar({ ...nuevoLugar, id_via: val ? Number(val) : null })}
+      >
+        <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+        {viasFiltradasNuevo.map((v: any) => (
+          <Picker.Item key={String(v.id_via)} label={v.nombre_via || ""} value={String(v.id_via)} color="#000000" />
+        ))}
+      </Picker>
+    </View>
+  </View>
 
-  {/* Tus cuadras mapeadas */}
-  {cuadras.map((c) => (
-    <Picker.Item 
-      key={c.id_cuadra} 
-      label={`Cuadra ${c.numero_cuadra}`} 
-      value={c.id_cuadra} 
-    />
-  ))}
-</Picker>
-              </View>
+  <View style={{ flex: 0.8 }}>
+    <ThemedText style={styles.label}>Cuadra</ThemedText>
+    <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+      <Picker
+        selectedValue={nuevoLugar.id_cuadra !== null && nuevoLugar.id_cuadra !== undefined ? String(nuevoLugar.id_cuadra) : ""}
+        style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+        itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+        dropdownIconColor="#000000"
+        onValueChange={(val) => {
+          const nuevoValor = val === "" || val === null || val === undefined ? null : Number(val);
+          setNuevoLugar({ ...nuevoLugar, id_cuadra: nuevoValor });
+        }}
+      >
+        <Picker.Item label="-- Opcional --" value="" color="#888888" />
+        {cuadras.map((c: any) => (
+          <Picker.Item key={String(c.id_cuadra)} label={`N° ${c.numero_cuadra}`} value={String(c.id_cuadra)} color="#000000" />
+        ))}
+      </Picker>
+    </View>
+  </View>
+</View>
 
               <ThemedText style={styles.label}>Unidad Encargada</ThemedText>
               <TextInput
@@ -745,52 +866,112 @@ export default function LugarScreen() {
                 onChangeText={(t) => setNuevoLugar({ ...nuevoLugar, unidad_encargada: t })}
               />
 
+              {/* BOTÓN MAPA Y COORDENADAS */}
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+                <ThemedText style={styles.label}>Coordenadas GPS</ThemedText>
+                <TouchableOpacity
+                  onPress={() => {
+                    setModoMapa("crear");
+                    setModalMapaVisible(true);
+                  }}
+                  style={{ flexDirection: "row", alignItems: "center", backgroundColor: MJM_BLUE, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
+                >
+                  <Ionicons name="map" size={14} color="white" style={{ marginRight: 4 }} />
+                  <Text style={{ color: "white", fontSize: 11, fontWeight: "bold" }}>Ver Mapa</Text>
+                </TouchableOpacity>
+              </View>
+
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <ThemedText style={styles.label}>Latitud</ThemedText>
-                 <TextInput
-  style={styles.modalInput}
-  keyboardType="numeric"
-  value={nuevoLugar.latitud !== null && nuevoLugar.latitud !== undefined ? String(nuevoLugar.latitud) : ""}
-  onChangeText={(t) => {
-    const nuevoValor = t.trim() === "" ? null : parseFloat(t);
-    setNuevoLugar({ ...nuevoLugar, latitud: isNaN(nuevoValor!) ? null : nuevoValor });
-  }}
-/>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Latitud"
+                    keyboardType="numeric"
+                    value={nuevoLugar.latitud !== null && nuevoLugar.latitud !== undefined ? String(nuevoLugar.latitud) : ""}
+                    onChangeText={(t) => {
+                      const nuevoValor = t.trim() === "" ? null : parseFloat(t);
+                      setNuevoLugar({ ...nuevoLugar, latitud: isNaN(nuevoValor!) ? null : nuevoValor });
+                    }}
+                  />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <ThemedText style={styles.label}>Longitud</ThemedText>
-                 <TextInput
-  style={styles.modalInput}
-  keyboardType="numeric"
-  value={nuevoLugar.longitud !== null && nuevoLugar.longitud !== undefined ? String(nuevoLugar.longitud) : ""}
-  onChangeText={(t) => {
-    const nuevoValor = t.trim() === "" ? null : parseFloat(t);
-    setNuevoLugar({ ...nuevoLugar, longitud: isNaN(nuevoValor!) ? null : nuevoValor });
-  }}
-/>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Longitud"
+                    keyboardType="numeric"
+                    value={nuevoLugar.longitud !== null && nuevoLugar.longitud !== undefined ? String(nuevoLugar.longitud) : ""}
+                    onChangeText={(t) => {
+                      const nuevoValor = t.trim() === "" ? null : parseFloat(t);
+                      setNuevoLugar({ ...nuevoLugar, longitud: isNaN(nuevoValor!) ? null : nuevoValor });
+                    }}
+                  />
                 </View>
               </View>
 
               <ThemedText style={styles.label}>Estado</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevoLugar.estado}
-                  onValueChange={(val) => setNuevoLugar({ ...nuevoLugar, estado: Number(val) })}
-                >
-                  <Picker.Item label="ACTIVO" value={1} />
-                  <Picker.Item label="INACTIVO" value={0} />
-                </Picker>
-              </View>
+         <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={nuevoLugar.estado !== null && nuevoLugar.estado !== undefined ? String(nuevoLugar.estado) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setNuevoLugar({ ...nuevoLugar, estado: val !== "" && val !== null ? Number(val) : 0 })}
+  >
+    <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+    <Picker.Item label="ACTIVO" value="1" color="#000000" />
+    <Picker.Item label="INACTIVO" value="0" color="#000000" />
+  </Picker>
+</View>
 
               <TouchableOpacity style={styles.btnGuardar} onPress={handleGuardarNuevo} disabled={loading}>
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <ThemedText style={{ color: "white", fontWeight: "bold" }}>REGISTRAR LUGAR</ThemedText>
-                )}
+                {loading ? <ActivityIndicator color="white" /> : <ThemedText style={{ color: "white", fontWeight: "bold" }}>REGISTRAR LUGAR</ThemedText>}
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL MAPA - DETECCIÓN MULTIPLATAFORMA (LEAFLET EN WEB / PANEL EN MÓVIL) */}
+      <Modal visible={modalMapaVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 650, height: 500 }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.headerTitle}>Ubicación Geográfica</ThemedText>
+              <TouchableOpacity onPress={() => setModalMapaVisible(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {Platform.OS === "web" ? (
+              <iframe
+                title="Leaflet Map"
+                style={{ width: "100%", height: 360, border: "none", borderRadius: 8 }}
+                srcDoc={getLeafletWebHtml(
+                  modoMapa === "editar" ? lugarEdit?.latitud : nuevoLugar?.latitud,
+                  modoMapa === "editar" ? lugarEdit?.longitud : nuevoLugar?.longitud
+                )}
+              />
+            ) : (
+              <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 20 }}>
+                <Ionicons name="location" size={48} color={MJM_BLUE} />
+                <Text style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: "#334155" }}>
+                  Coordenadas seleccionadas:
+                </Text>
+                <Text style={{ fontWeight: "bold", fontSize: 14, color: "#0F172A", marginTop: 4 }}>
+                  Lat: {modoMapa === "editar" ? lugarEdit?.latitud || "-" : nuevoLugar?.latitud || "-"}
+                </Text>
+                <Text style={{ fontWeight: "bold", fontSize: 14, color: "#0F172A", marginTop: 2 }}>
+                  Lng: {modoMapa === "editar" ? lugarEdit?.longitud || "-" : nuevoLugar?.longitud || "-"}
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.btnGuardar, { marginTop: 12 }]}
+              onPress={() => setModalMapaVisible(false)}
+            >
+              <ThemedText style={{ color: "white", fontWeight: "bold" }}>CONFIRMAR UBICACIÓN</ThemedText>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -836,23 +1017,23 @@ export default function LugarScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  header: { padding: 16, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E2E8F0" },
-  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  header: { padding: 12, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E2E8F0" },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 6 },
   headerTitle: { fontSize: 16, fontWeight: "bold", color: MJM_BLUE },
   btnAdd: { backgroundColor: MJM_BLUE, width: 38, height: 38, borderRadius: 8, justifyContent: "center", alignItems: "center" },
-  estadoToggle: { flexDirection: "row", backgroundColor: "#F1F5F9", borderRadius: 8, padding: 3, gap: 4 },
-  btnEstado: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  estadoToggle: { flexDirection: "row", backgroundColor: "#F1F5F9", borderRadius: 8, padding: 2, gap: 2, flexShrink: 1 },
+  btnEstado: { paddingHorizontal: 6, paddingVertical: 5, borderRadius: 6, alignItems: "center" },
   btnEstadoActive: { backgroundColor: MJM_BLUE },
-  btnText: { fontSize: 11, fontWeight: "bold", color: "#64748B" },
-  searchBar: { flexDirection: "row", alignItems: "center", backgroundColor: "#F1F5F9", borderRadius: 8, paddingHorizontal: 12, height: 40, marginBottom: 12 },
+  btnText: { fontSize: 10, fontWeight: "600", color: "#64748B" },
+  searchBar: { flexDirection: "row", alignItems: "center", backgroundColor: "#F1F5F9", borderRadius: 8, paddingHorizontal: 12, height: 40, marginBottom: 8 },
   input: { flex: 1, marginLeft: 8, color: "#0F172A", fontSize: 13 },
   filterRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   filterLabel: { fontSize: 12, fontWeight: "bold", color: "#64748B" },
   btnChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: "#F1F5F9" },
   btnActive: { backgroundColor: MJM_BLUE },
-  tableHeader: { flexDirection: "row", backgroundColor: "#E2E8F0", paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderColor: "#CBD5E1" },
-  headerText: { fontWeight: "bold", color: "#334155", fontSize: 12 },
-  tableRow: { flexDirection: "row", paddingVertical: 12, paddingHorizontal: 16, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderColor: "#F1F5F9", alignItems: "center" },
+ tableHeader: { flexDirection: "row", paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#024885" },
+  headerText: { fontWeight: "bold", fontSize: 11, color: "#FFFFFF" },
+   tableRow: { flexDirection: "row", paddingVertical: 12, paddingHorizontal: 16, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderColor: "#F1F5F9", alignItems: "center" },
   mobileCard: { backgroundColor: "#FFFFFF", padding: 14, marginHorizontal: 16, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E2E8F0" },
   cell: { fontSize: 12, color: "#334155", paddingHorizontal: 4 },
   cellBorder: { borderRightWidth: 1, borderRightColor: "#E2E8F0" },
@@ -860,10 +1041,17 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 16 },
   modalContent: { backgroundColor: "white", borderRadius: 12, padding: 20, width: "100%", maxWidth: 500, maxHeight: "90%" },
   alertContent: { backgroundColor: "white", borderRadius: 12, padding: 24, width: "100%", maxWidth: 360, alignItems: "center" },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  modalTitle: { fontSize: 16, fontWeight: "bold", color: "#0F172A" },
-  label: { fontSize: 12, fontWeight: "bold", color: "#475569", marginTop: 10, marginBottom: 4 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  label: { fontSize: 12, fontWeight: "bold", color: "#475569", marginTop: 8, marginBottom: 4 },
   modalInput: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, padding: 10, fontSize: 13, color: "#0F172A" },
-  modalPickerContainer: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, overflow: "hidden" },
-  btnGuardar: { backgroundColor: MJM_BLUE, padding: 12, borderRadius: 8, alignItems: "center", marginTop: 20 },
+  modalPickerContainer: {
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    justifyContent: "center",
+    overflow: "hidden",
+    height: 45,
+  },
+  btnGuardar: { backgroundColor: MJM_BLUE, padding: 12, borderRadius: 8, alignItems: "center", marginTop: 16 },
 });

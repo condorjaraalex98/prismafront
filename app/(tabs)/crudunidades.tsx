@@ -16,7 +16,7 @@ import {
   View,
 } from "react-native";
 import * as XLSX from "xlsx";
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "${API_URL}";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const ThemedText = ({ style, children, ...props }: any) => (
   <Text style={style} {...props}>
     {children}
@@ -76,10 +76,12 @@ export default function FlotaScreen() {
   }, [searchText]);
 
   // Cargar Tipos de Vehículo
+ // Cargar Tipos de Vehículo
   useEffect(() => {
     const cargarTipos = async () => {
       try {
-        const res = await fetch("${API_URL}/tiposvehiculo");
+        // 👈 Usa comillas invertidas `` y la constante API_BASE_URL correcta
+        const res = await fetch(`${API_BASE_URL}/tiposvehiculo`);
         const data = await res.json();
         setTiposVehiculo(data.data || data || []);
       } catch (e) {
@@ -88,7 +90,6 @@ export default function FlotaScreen() {
     };
     cargarTipos();
   }, []);
-
   const cargarDatos = useCallback(
     async (reset = false) => {
       if (loading) return;
@@ -102,7 +103,7 @@ export default function FlotaScreen() {
           page: nextPage.toString(),
         });
 
-        const res = await fetch(`${API_URL}/flotatotal?${query}`);
+        const res = await fetch(`${API_BASE_URL}/flotatotal?${query}`);
         const result = await res.json();
 
         setCounts({
@@ -144,7 +145,7 @@ export default function FlotaScreen() {
         export: "true",
       });
 
-      const res = await fetch(`${API_URL}/flotatotal?${query}`);
+      const res = await fetch(`${API_BASE_URL}/flotatotal?${query}`);
       const result = await res.json();
       const dataCompleta = result.data || [];
 
@@ -194,7 +195,7 @@ export default function FlotaScreen() {
 
     if (cleanPlaca.length >= 6) {
       try {
-        const res = await fetch(`${API_URL}/checkplacacop/${cleanPlaca}`);
+        const res = await fetch(`${API_BASE_URL}/checkplacacop/${cleanPlaca}`);
         const data = await res.json();
         if (data.existe) {
           setErrors((prev: any) => ({ ...prev, placa: true }));
@@ -227,7 +228,7 @@ export default function FlotaScreen() {
 
     try {
       setLoading(true);
-      const res = await fetch("${API_URL}/insertflota", {
+const res = await fetch(`${API_BASE_URL}/insertflota`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nuevaUnidad),
@@ -275,7 +276,7 @@ export default function FlotaScreen() {
     if (!unidadEdit) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/updateflota/${unidadEdit.id_unidad}`, {
+      const res = await fetch(`${API_BASE_URL}/updateflota/${unidadEdit.id_unidad}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(unidadEdit),
@@ -499,15 +500,14 @@ export default function FlotaScreen() {
             )}
           </TouchableOpacity>
         )}
-        ListFooterComponent={loading ? <ActivityIndicator size="small" color={MJM_BLUE} style={{ margin: 15 }} /> : null}
-      />
+      ListFooterComponent={loading ? <ActivityIndicator size="small" color={MJM_BLUE} style={{ margin: 15 }} /> : undefined}     />
 
       {/* MODAL CREAR (INSERCIÓN) */}
       <Modal visible={modalCrearVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Nueva Unidad Flota</ThemedText>
+              <ThemedText style={styles.headerTitle}>Registrar Unidad</ThemedText>
               <TouchableOpacity onPress={() => setModalCrearVisible(false)}>
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
@@ -524,20 +524,28 @@ export default function FlotaScreen() {
               {placaDuplicadaMsg !== "" && <Text style={styles.errorTextRed}>{placaDuplicadaMsg}</Text>}
 
               <ThemedText style={styles.label}>Tipo de Unidad *</ThemedText>
-              <View style={[styles.modalPickerContainer, errors.id_tipo_vehiculo && styles.inputError]}>
-                <Picker
-                  selectedValue={nuevaUnidad.id_tipo_vehiculo}
-                  onValueChange={(val) => {
-                    setNuevaUnidad({ ...nuevaUnidad, id_tipo_vehiculo: val });
-                    if (errors.id_tipo_vehiculo) setErrors({ ...errors, id_tipo_vehiculo: false });
-                  }}
-                >
-                  <Picker.Item label="-- SELECCIONE --" value="" />
-                  {tiposVehiculo.map((tv: any) => (
-                    <Picker.Item key={tv.id_tipo_vehiculo} label={tv.descripcion} value={tv.id_tipo_vehiculo} />
-                  ))}
-                </Picker>
-              </View>
+          <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }, errors.id_tipo_vehiculo && styles.inputError]}>
+  <Picker
+    selectedValue={nuevaUnidad.id_tipo_vehiculo ? String(nuevaUnidad.id_tipo_vehiculo) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => {
+      setNuevaUnidad({ ...nuevaUnidad, id_tipo_vehiculo: val });
+      if (errors.id_tipo_vehiculo) setErrors({ ...errors, id_tipo_vehiculo: false });
+    }}
+  >
+    <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+    {tiposVehiculo.map((tv: any) => (
+      <Picker.Item
+        key={String(tv.id_tipo_vehiculo)}
+        label={tv.descripcion || ""}
+        value={String(tv.id_tipo_vehiculo)}
+        color="#000000"
+      />
+    ))}
+  </Picker>
+</View>
 
               <ThemedText style={styles.label}>Número de Unidad *</ThemedText>
               <TextInput
@@ -573,7 +581,8 @@ export default function FlotaScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Editar Unidad #{unidadEdit?.id_unidad}</ThemedText>
+              <ThemedText style={styles.headerTitle}>Editar Unidad #{unidadEdit?.id_unidad}</ThemedText>
+                    
               <TouchableOpacity onPress={() => setModalEditarVisible(false)}>
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
@@ -592,17 +601,25 @@ export default function FlotaScreen() {
                 />
 
                 <ThemedText style={styles.label}>Tipo de Unidad</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={unidadEdit.id_tipo_vehiculo}
-                    onValueChange={(val) => setUnidadEdit({ ...unidadEdit, id_tipo_vehiculo: val })}
-                  >
-                    <Picker.Item label="-- SELECCIONE --" value="" />
-                    {tiposVehiculo.map((tv: any) => (
-                      <Picker.Item key={tv.id_tipo_vehiculo} label={tv.descripcion} value={tv.id_tipo_vehiculo} />
-                    ))}
-                  </Picker>
-                </View>
+           <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={unidadEdit.id_tipo_vehiculo ? String(unidadEdit.id_tipo_vehiculo) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setUnidadEdit({ ...unidadEdit, id_tipo_vehiculo: val })}
+  >
+    <Picker.Item label="-- SELECCIONE --" value="" color="#888888" />
+    {tiposVehiculo.map((tv: any) => (
+      <Picker.Item
+        key={String(tv.id_tipo_vehiculo)}
+        label={tv.descripcion || ""}
+        value={String(tv.id_tipo_vehiculo)}
+        color="#000000"
+      />
+    ))}
+  </Picker>
+</View>
 
                 <ThemedText style={styles.label}>Número de Unidad</ThemedText>
                 <TextInput
@@ -612,15 +629,19 @@ export default function FlotaScreen() {
                 />
 
                 <ThemedText style={styles.label}>Tipo Servicio</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={unidadEdit.tipo_servicio}
-                    onValueChange={(val) => setUnidadEdit({ ...unidadEdit, tipo_servicio: val })}
-                  >
-                    <Picker.Item label="MUNICIPAL" value="MUNICIPAL" />
-                    <Picker.Item label="INTEGRADO" value="INTEGRADO" />
-                  </Picker>
-                </View>
+             <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={unidadEdit.tipo_servicio ? String(unidadEdit.tipo_servicio) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setUnidadEdit({ ...unidadEdit, tipo_servicio: val })}
+  >
+    <Picker.Item label="Seleccionar Tipo de Servicio..." value="" color="#888888" />
+    <Picker.Item label="MUNICIPAL" value="MUNICIPAL" color="#000000" />
+    <Picker.Item label="INTEGRADO" value="INTEGRADO" color="#000000" />
+  </Picker>
+</View>
 
                 <ThemedText style={styles.label}>Marca</ThemedText>
                 <TextInput
@@ -646,15 +667,19 @@ export default function FlotaScreen() {
                 />
 
                 <ThemedText style={styles.label}>Estado</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={unidadEdit.estado}
-                    onValueChange={(val) => setUnidadEdit({ ...unidadEdit, estado: Number(val) })}
-                  >
-                    <Picker.Item label="ACTIVO" value={1} />
-                    <Picker.Item label="INACTIVO" value={0} />
-                  </Picker>
-                </View>
+               <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={unidadEdit.estado !== undefined && unidadEdit.estado !== null ? String(unidadEdit.estado) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setUnidadEdit({ ...unidadEdit, estado: Number(val) })}
+  >
+    <Picker.Item label="Seleccionar Estado..." value="" color="#888888" />
+    <Picker.Item label="ACTIVO" value="1" color="#000000" />
+    <Picker.Item label="INACTIVO" value="0" color="#000000" />
+  </Picker>
+</View>
 
                 <TouchableOpacity style={styles.btnGuardar} onPress={handleGuardarCambios} disabled={loading}>
                   {loading ? (
@@ -740,7 +765,15 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: "white", borderRadius: 16, padding: 18, width: "100%", maxWidth: 480, maxHeight: "90%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "#EEE" },
   modalTitle: { fontSize: 16, fontWeight: "bold", color: "#0F172A" },
-  modalPickerContainer: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, backgroundColor: "#F8FAFC", height: 45, justifyContent: "center" },
+ modalPickerContainer: {
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    justifyContent: "center",
+    overflow: "hidden",
+    height: 45,
+  },
   modalInput: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
   inputError: { borderColor: "#E53935", borderWidth: 1.5, backgroundColor: "#FFEBEE" },
   errorTextRed: { color: "#E53935", fontSize: 11, fontWeight: "bold", marginTop: 4 },

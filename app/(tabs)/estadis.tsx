@@ -14,7 +14,7 @@ import {
     Dimensions,
 } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "${API_URL}";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
 const MJM_DARK = "#0f172a";
 const COLOR_M = "#38bdf8"; // Mañana
@@ -372,7 +372,7 @@ export default function GraficoEstadisticasScreen() {
                     animationDuration={1200}
                     dataPointsColor={MJM_BLUE}
                     dataPointsRadius={4}
-                    textStyle={{ fontSize: 8, color: '#64748b' } as any}
+                  
                     xAxisColor="#cbd5e1"
                     yAxisColor="#cbd5e1"
                     yAxisTextStyle={{ fontSize: 9, color: '#64748b' }}

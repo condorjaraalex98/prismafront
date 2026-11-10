@@ -88,71 +88,103 @@ const handleToggleSection = (sectionLabel: string) => {
           icon="home-outline"
               label="Principal"
               isActive={activeRoute === "principal"}
-              isExpanded={true}
+              isExpanded={isExpanded || isMobile}
               onPress={() => navigateTo("principal")}
-              isSubItem
             />
  )}
 
- {(userRolId === 3 || userRolId === 1) && isWeb && (
-
-<MenuOption
-             icon="home-outline"
-              label="Principal"
-              isActive={activeRoute === "cecomdoceh"}
-              isExpanded={true}
-              onPress={() => navigateTo("cecomdoceh")}
-              isSubItem
-            />
+ {(userRolId === 3 || userRolId === 1|| userRolId === 2) && isWeb && (
+   <>
+     <MenuOption
+       icon="home-outline"
+       label="Reg. CECOM"
+       isActive={activeRoute === "cecomdoceh"}
+       isExpanded={isExpanded || isMobile}
+       onPress={() => navigateTo("cecomdoceh")}
+     />
+     <MenuOption
+       icon="home-outline"
+       label="Reg. Campo"
+       isActive={activeRoute === "principal"}
+       isExpanded={isExpanded || isMobile}
+       onPress={() => navigateTo("principal")}
+     />
+   </>
  )}
 
        
-   {(userRolId === 3 || userRolId === 1) && !isWeb && (
-  <>
-    {/* Primer Collapsible: RANKING (Celular o Web según necesites) */}
-    <CollapsibleSection
-      icon="location-outline"
-      label="RANKING"
-      isExpanded={isExpanded || isMobile}
-      isOpen={openSection === "Ranking"}
-      onToggle={() => handleToggleSection("Ranking")}
-    >
-      <MenuOption
-        icon="stats-chart-outline"
-        label="Estadística CAMPO"
-        isActive={activeRoute === "rcampo"}
-        isExpanded={true}
-        onPress={() => navigateTo("rcampo")}
-        isSubItem
-      />
-        <MenuOption
-        icon="stats-chart-outline"
-        label="Estadística MOTO"
-        isActive={activeRoute === "rcampomoto"}
-        isExpanded={true}
-        onPress={() => navigateTo("rcampomoto")}
-        isSubItem
-      />
-    </CollapsibleSection>
+{(() => {
+  const rol = userRolId as number;
+  const showMobileStats = rol === 1 || ((rol === 2 || rol === 3) && !isWeb);
+  const showWebStats = (rol === 1 || rol === 3) && isWeb;
+  const showOtros = showMobileStats || showWebStats;
 
-    {/* Segundo Collapsible: PRINCIPAL / INICIO */}
-    <CollapsibleSection
-      icon="home-outline"
-      label="OTROS"
-      isExpanded={isExpanded || isMobile}
-      isOpen={openSection === "Principal"}
-      onToggle={() => handleToggleSection("Principal")}
-    >
-      <MenuOption
-        icon="map-outline"
-        label="Mapas"
-        isActive={activeRoute === "mapa"}
-        isExpanded={true}
-        onPress={() => navigateTo("mapa")}
-        isSubItem
-      />
+  return (
+    <>
+      {/* Collapsible: RANKING */}
+      {(showMobileStats || showWebStats) && (
+        <CollapsibleSection
+          icon="location-outline"
+          label="RANKING"
+          isExpanded={isExpanded || isMobile}
+          isOpen={openSection === "Ranking"}
+          onToggle={() => handleToggleSection("Ranking")}
+        >
+          {/* Estadísticas para Móvil (o Rol 1 siempre) */}
+          {showMobileStats && (
+            <>
+              <MenuOption
+                icon="stats-chart-outline"
+                label="Est. CAMPO"
+                isActive={activeRoute === "rcampo"}
+                isExpanded={true}
+                onPress={() => navigateTo("rcampo")}
+                isSubItem
+              />
+              <MenuOption
+                icon="stats-chart-outline"
+                label="Est. MOTO"
+                isActive={activeRoute === "rcampomoto"}
+                isExpanded={true}
+                onPress={() => navigateTo("rcampomoto")}
+                isSubItem
+              />
+            </>
+          )}
 
-       <MenuOption
+          {/* Estadística para Web (Roles 1 y 3) */}
+          {showWebStats && (
+            <MenuOption
+              icon="stats-chart-outline"
+              label="Est. CECOM"
+              isActive={activeRoute === "rcecom"}
+              isExpanded={true}
+              onPress={() => navigateTo("rcecom")}
+              isSubItem
+            />
+          )}
+        </CollapsibleSection>
+      )}
+
+      {/* Collapsible: OTROS / PRINCIPAL */}
+      {showOtros && (
+        <CollapsibleSection
+          icon="home-outline"
+          label="OTROS"
+          isExpanded={isExpanded || isMobile}
+          isOpen={openSection === "Otros" || openSection === "Principal"}
+          onToggle={() => handleToggleSection(isWeb ? "Principal" : "Otros")}
+        >
+          <MenuOption
+            icon="map-outline"
+            label="Mapas"
+            isActive={activeRoute === "mapa"}
+            isExpanded={true}
+            onPress={() => navigateTo("mapa")}
+            isSubItem
+          />
+         {((userRolId as number) === 1) && (
+      <MenuOption
         icon="pin-outline"
         label="Puntos"
         isActive={activeRoute === "puntos"}
@@ -160,70 +192,17 @@ const handleToggleSection = (sectionLabel: string) => {
         onPress={() => navigateTo("puntos")}
         isSubItem
       />
-    </CollapsibleSection>
-  </>
+    )}
+  </CollapsibleSection>
 )}
-
-
-        {(userRolId === 3 || userRolId === 1) && isWeb && (
-  <>
-    {/* Primer Collapsible: RANKING (Celular o Web según necesites) */}
-    <CollapsibleSection
-      icon="location-outline"
-      label="RANKING"
-      isExpanded={isExpanded || isMobile}
-      isOpen={openSection === "Ranking"}
-      onToggle={() => handleToggleSection("Ranking")}
-    >
-      <MenuOption
-        icon="stats-chart-outline"
-        label="Estadística CECOM"
-        isActive={activeRoute === "rcecom"}
-        isExpanded={true}
-        onPress={() => navigateTo("rcecom")}
-        isSubItem
-      />
-    </CollapsibleSection>
-
-    {/* Segundo Collapsible: PRINCIPAL / INICIO */}
-    <CollapsibleSection
-      icon="home-outline"
-      label="OTROS"
-      isExpanded={isExpanded || isMobile}
-      isOpen={openSection === "Principal"}
-      onToggle={() => handleToggleSection("Principal")}
-    >
-      <MenuOption
-        icon="map-outline"
-        label="Mapas"
-        isActive={activeRoute === "mapa"}
-        isExpanded={true}
-        onPress={() => navigateTo("mapa")}
-        isSubItem
-      />
-
-       <MenuOption
-        icon="pin-outline"
-        label="Puntos"
-        isActive={activeRoute === "puntos"}
-        isExpanded={true}
-        onPress={() => navigateTo("puntos")}
-        isSubItem
-      />
-    </CollapsibleSection>
-  </>
-)}
-
-
-
-
-
-
+    </>
+  );
+})()}
 
 
         {(userRolId === 4 || userRolId === 1) && (
           <CollapsibleSection
-            label="MANTENIMIENTO1"
+            label="MANTENIMIENTO"
             icon="location-outline"
             isExpanded={isExpanded || isMobile}
             isOpen={openSection === "Mantenimiento"}
@@ -237,14 +216,7 @@ const handleToggleSection = (sectionLabel: string) => {
               onPress={() => navigateTo("usuario")}
               isSubItem
             />
-            <MenuOption
-              icon="location-outline"
-              label="Contraseña"
-              isActive={activeRoute === "rolpersona"}
-              isExpanded={true}
-              onPress={() => navigateTo("rolpersona")}
-              isSubItem
-            />
+          
             <MenuOption
               icon="map-outline"
               label="PNP"
@@ -255,15 +227,23 @@ const handleToggleSection = (sectionLabel: string) => {
             />
             <MenuOption
               icon="map-outline"
-              label="UNIDADES"
+              label="Unidades"
               isActive={activeRoute === "crudunidades"}
               isExpanded={true}
               onPress={() => navigateTo("crudunidades")}
               isSubItem
             />
+             <MenuOption
+              icon="map-outline"
+              label="Vía"
+              isActive={activeRoute === "crudvia"}
+              isExpanded={true}
+              onPress={() => navigateTo("crudvia")}
+              isSubItem
+            />
             <MenuOption
               icon="map-outline"
-              label="LUGAR"
+              label="Lugar"
               isActive={activeRoute === "crudlugar"}
               isExpanded={true}
               onPress={() => navigateTo("crudlugar")}
@@ -274,11 +254,11 @@ const handleToggleSection = (sectionLabel: string) => {
 
         {(userRolId === 1) && isWeb && (
           <CollapsibleSection
-            label="PATRULLAJE TECNOLÓGICO"
+            label="MATRIZ"
             icon="location-outline"
             isExpanded={isExpanded || isMobile}
-            isOpen={openSection === "Patrullaje Tecnológico"}
-            onToggle={() => handleToggleSection("Patrullaje Tecnológico")}
+            isOpen={openSection === "matriz"}
+            onToggle={() => handleToggleSection("matriz")}
           >
             <MenuOption
               icon="play-circle-outline"
@@ -296,30 +276,7 @@ const handleToggleSection = (sectionLabel: string) => {
               onPress={() => navigateTo("cecom")}
               isSubItem
             />
-            <MenuOption
-              icon="desktop-outline"
-              label="Cecom 12 horas"
-              isActive={activeRoute === "cecomdoceh"}
-              isExpanded={true}
-              onPress={() => navigateTo("cecomdoceh")}
-              isSubItem
-            />
-            <MenuOption
-              icon="radio-outline"
-              label="Cecom 7 días"
-              isActive={activeRoute === "principal"}
-              isExpanded={true}
-              onPress={() => navigateTo("principal")}
-              isSubItem
-            />
-            <MenuOption
-              icon="radio-outline"
-              label="Record Cecom"
-              isActive={activeRoute === "recordcecom"}
-              isExpanded={true}
-              onPress={() => navigateTo("recordcecom")}
-              isSubItem
-            />
+           
 
              <MenuOption
               icon="radio-outline"
@@ -340,7 +297,7 @@ const handleToggleSection = (sectionLabel: string) => {
           </CollapsibleSection>
         )}
 
-{(userRolId === 5 || userRolId === 1) &&  (
+{( userRolId === 2 || userRolId === 1) && isWeb && (
           <CollapsibleSection
             label="ESTADÍSTICA"
             icon="location-outline"
@@ -348,60 +305,21 @@ const handleToggleSection = (sectionLabel: string) => {
             isOpen={openSection === "ESTADISTICA"}
             onToggle={() => handleToggleSection("ESTADISTICA")}
           >
-             <MenuOption
-        icon="stats-chart-outline"
-        label="Estadística CAMPO"
-        isActive={activeRoute === "rcampo"}
-        isExpanded={true}
-        onPress={() => navigateTo("rcampo")}
-        isSubItem
-      />
-
-         <MenuOption
-        icon="stats-chart-outline"
-        label="Estadística MOTO"
-        isActive={activeRoute === "rcampomoto"}
-        isExpanded={true}
-        onPress={() => navigateTo("rcampomoto")}
-        isSubItem
-      />
-            <MenuOption
+          <MenuOption
               icon="location-outline"
-              label="Registro"
-              isActive={activeRoute === "estadis"}
-              isExpanded={true}
-              onPress={() => navigateTo("estadis")}
-              isSubItem
-            />
-             <MenuOption
-              icon="location-outline"
-              label="Registro"
+              label="Dashboard"
               isActive={activeRoute === "estadist"}
               isExpanded={true}
               onPress={() => navigateTo("estadist")}
               isSubItem
             />
-          <MenuOption
-              icon="location-outline"
-              label="POI"
-              isActive={activeRoute === "poi"}
-              isExpanded={true}
-              onPress={() => navigateTo("poi")}
-              isSubItem
-            />
+            
 
-             <MenuOption
-              icon="location-outline"
-              label="pruebau"
-              isActive={activeRoute === "cecomsuper"}
-              isExpanded={true}
-              onPress={() => navigateTo("cecomsuper")}
-              isSubItem
-            />
+         
           </CollapsibleSection>
         )}
 
-        {(userRolId === 5 || userRolId === 1) && isWeb && (
+        {(userRolId === 2 || userRolId === 1) && isWeb && (
           <CollapsibleSection
             label="SIPCOP"
             icon="location-outline"
@@ -433,18 +351,8 @@ const handleToggleSection = (sectionLabel: string) => {
               onPress={() => navigateTo("sipcopd")}
               isSubItem
             />
-          </CollapsibleSection>
-        )}
 
-        {(userRolId === 5 || userRolId === 1) && isWeb && (
-          <CollapsibleSection
-            label="EXPORTAR"
-            icon="location-outline"
-            isExpanded={isExpanded || isMobile}
-            isOpen={openSection === "EXPORTAR"}
-            onToggle={() => handleToggleSection("EXPORTAR")}
-          >
-            <MenuOption
+               <MenuOption
               icon="location-outline"
               label="Exportar"
               isActive={activeRoute === "exportar"}
@@ -463,42 +371,8 @@ const handleToggleSection = (sectionLabel: string) => {
           </CollapsibleSection>
         )}
 
-        {(userRolId === 5 || userRolId === 1) && isWeb && (
-          <CollapsibleSection
-            label="POI"
-            icon="location-outline"
-            isExpanded={isExpanded || isMobile}
-            isOpen={openSection === "POI"}
-            onToggle={() => handleToggleSection("POI")}
-          >
-            <MenuOption
-              icon="location-outline"
-              label="POI"
-              isActive={activeRoute === "poi"}
-              isExpanded={true}
-              onPress={() => navigateTo("poi")}
-              isSubItem
-            />
+       
 
-            <MenuOption
-              icon="location-outline"
-              label="POI CECOM"
-              isActive={activeRoute === "poicecom"}
-              isExpanded={true}
-              onPress={() => navigateTo("poicecom")}
-              isSubItem
-            />
-
-            <MenuOption
-              icon="location-outline"
-              label="POI CECOM"
-              isActive={activeRoute === "poicecom2"}
-              isExpanded={true}
-              onPress={() => navigateTo("poicecom2")}
-              isSubItem
-            />
-          </CollapsibleSection>
-        )}
 
         {(userRolId === 4 || userRolId === 1) && isWeb && (
           <CollapsibleSection

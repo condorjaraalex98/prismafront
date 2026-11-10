@@ -1,19 +1,17 @@
-import { Drawer } from 'expo-router/drawer';
+// app/_layout.tsx
+import { Stack } from 'expo-router';
 import { AuthProvider } from '../context/userContext';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <Drawer 
-        screenOptions={{ 
-          headerShown: false // Esto oculta el encabezado de todas las pantallas
-        }}
-      >
-        <Drawer.Screen name="persona" options={{ title: 'Personas' }} />
-        <Drawer.Screen name="oc" options={{ title: 'OC' }} />
-        <Drawer.Screen name="dashboard" options={{ title: 'Dashboard' }} />
-        <Drawer.Screen name="camarav" options={{ title: 'Cámara' }} />
-      </Drawer>
+      <Stack screenOptions={{ headerShown: false }}>
+        {/* El login (index) fuera del Drawer */}
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        
+        {/* El grupo (tabs) que contiene toda la lógica de tu menú lateral y pantallas */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      </Stack>
     </AuthProvider>
   );
 }

@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 import * as XLSX from "xlsx";
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const ThemedText = ({ style, children, ...props }: any) => (
   <Text style={style} {...props}>
     {children}
@@ -27,7 +27,7 @@ const ThemedText = ({ style, children, ...props }: any) => (
 const MJM_BLUE = "#024885";
 
 const GRADOS_LIST = [
-  "GEN POL", "TGRAL", "GRAL", "CRNL", "CMDTE", "MY",
+  "GEN POL", "TGRAL", "GRAL", "CRNL", "CMDTE",
   "CAP", "TTE", "ALFZ", "S3ER", "SBRIG", "ST1",
   "ST2", "ST3", "SO1", "SO2", "SO3",
 ];
@@ -241,9 +241,9 @@ export default function PnpScreen() {
       return;
     }
 
-    try {
+   try {
       setLoading(true);
-      const res = await fetch("${API_URL}/insertpnp", {
+      const res = await fetch(`${API_URL}/insertpnp`, { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nuevoPnp),
@@ -319,11 +319,11 @@ export default function PnpScreen() {
                 <Ionicons name="document-text" size={16} color="white" />
               </TouchableOpacity>
             )}
-          <View style={styles.estadoToggle}>
+      <View style={styles.estadoToggle}>
   {[
     { id: "TODOS", l: "TODOS", c: counts.total },
-    { id: "ACTIVO", l: "ACTIVOS", c: counts.activos },
-    { id: "INACTIVO", l: "INACTIVOS", c: counts.inactivos },
+    { id: "1", l: "ACTIVOS", c: counts.activos },       // 👈 Cambiado a "1"
+    { id: "0", l: "INACTIVOS", c: counts.inactivos },   // 👈 Cambiado a "0"
   ].map((e) => (
     <TouchableOpacity
       key={e.id}
@@ -471,15 +471,15 @@ export default function PnpScreen() {
             )}
           </TouchableOpacity>
         )}
-        ListFooterComponent={loading ? <ActivityIndicator size="small" color={MJM_BLUE} style={{ margin: 15 }} /> : null}
-      />
+   ListFooterComponent={loading ? <ActivityIndicator size="small" color={MJM_BLUE} style={{ margin: 15 }} /> : undefined}     />
+ 
 
       {/* MODAL EDITAR */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Editar Efectivo PNP</ThemedText>
+                <ThemedText style={styles.headerTitle}>Editar PNP</ThemedText>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
@@ -487,16 +487,25 @@ export default function PnpScreen() {
             {pnpEdit && (
               <ScrollView>
                 <ThemedText style={styles.label}>Grado</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={pnpEdit.grado}
-                    onValueChange={(val) => setPnpEdit({ ...pnpEdit, grado: val })}
-                  >
-                    {GRADOS_LIST.map((g) => (
-                      <Picker.Item key={g} label={g} value={g} />
-                    ))}
-                  </Picker>
-                </View>
+               <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={pnpEdit.grado != null ? String(pnpEdit.grado) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setPnpEdit({ ...pnpEdit, grado: val })}
+  >
+    <Picker.Item label="Seleccionar Grado..." value="" color="#888888" />
+    {GRADOS_LIST.map((g) => (
+      <Picker.Item
+        key={String(g)}
+        label={String(g)}
+        value={String(g)}
+        color="#000000"
+      />
+    ))}
+  </Picker>
+</View>
 
                 <ThemedText style={styles.label}>Nombres</ThemedText>
                 <TextInput
@@ -522,15 +531,21 @@ export default function PnpScreen() {
                 />
 
                 <ThemedText style={styles.label}>Estado</ThemedText>
-                <View style={styles.modalPickerContainer}>
-                  <Picker
-                    selectedValue={pnpEdit.estado}
-                    onValueChange={(val) => setPnpEdit({ ...pnpEdit, estado: Number(val) })}
-                  >
-                    <Picker.Item label="ACTIVO" value={1} />
-                    <Picker.Item label="INACTIVO" value={0} />
-                  </Picker>
-                </View>
+               <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={pnpEdit.estado != null ? String(pnpEdit.estado) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) =>
+      setPnpEdit({ ...pnpEdit, estado: val !== "" ? Number(val) : null })
+    }
+  >
+    <Picker.Item label="Seleccionar Estado..." value="" color="#888888" />
+    <Picker.Item label="ACTIVO" value="1" color="#000000" />
+    <Picker.Item label="INACTIVO" value="0" color="#000000" />
+  </Picker>
+</View>
 
                 <TouchableOpacity style={styles.btnGuardar} onPress={handleGuardarCambios}>
                   <ThemedText style={{ color: "white", fontWeight: "bold" }}>GUARDAR CAMBIOS</ThemedText>
@@ -546,23 +561,32 @@ export default function PnpScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Nuevo Efectivo PNP</ThemedText>
+              <ThemedText style={styles.headerTitle}>Nuevo Registro PNP</ThemedText>
               <TouchableOpacity onPress={() => setModalCrearVisible(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
             <ScrollView>
               <ThemedText style={styles.label}>Grado *</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevoPnp.grado}
-                  onValueChange={(val) => setNuevoPnp({ ...nuevoPnp, grado: val })}
-                >
-                  {GRADOS_LIST.map((g) => (
-                    <Picker.Item key={g} label={g} value={g} />
-                  ))}
-                </Picker>
-              </View>
+           <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={nuevoPnp.grado}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setNuevoPnp({ ...nuevoPnp, grado: val })}
+  >
+    <Picker.Item label="Seleccionar Grado..." value="" color="#888888" />
+    {GRADOS_LIST.map((g) => (
+      <Picker.Item 
+        key={g} 
+        label={g} 
+        value={g} 
+        color="#000000" 
+      />
+    ))}
+  </Picker>
+</View>
 
               <ThemedText style={styles.label}>Nombres *</ThemedText>
               <TextInput
@@ -599,15 +623,19 @@ export default function PnpScreen() {
               )}
 
               <ThemedText style={styles.label}>Estado</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevoPnp.estado}
-                  onValueChange={(val) => setNuevoPnp({ ...nuevoPnp, estado: Number(val) })}
-                >
-                  <Picker.Item label="ACTIVO" value={1} />
-                  <Picker.Item label="INACTIVO" value={0} />
-                </Picker>
-              </View>
+           <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={nuevoPnp.estado !== undefined && nuevoPnp.estado !== null ? String(nuevoPnp.estado) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setNuevoPnp({ ...nuevoPnp, estado: Number(val) })}
+  >
+    <Picker.Item label="Seleccionar Estado..." value="" color="#888888" />
+    <Picker.Item label="ACTIVO" value="1" color="#000000" />
+    <Picker.Item label="INACTIVO" value="0" color="#000000" />
+  </Picker>
+</View>
 
               <TouchableOpacity
                 style={[
@@ -719,8 +747,15 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "#EEE" },
   modalTitle: { fontSize: 16, fontWeight: "bold", color: "#0F172A" },
   modalItem: { paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
-  modalPickerContainer: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, backgroundColor: "#F8FAFC", height: 45, justifyContent: "center" },
-  modalInput: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
+ modalPickerContainer: {
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    justifyContent: "center",
+    overflow: "hidden",
+    height: 45,
+  },modalInput: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
   inputError: { borderColor: "#E53935", borderWidth: 1.5, backgroundColor: "#FFEBEE" },
   errorTextRed: { color: "#E53935", fontSize: 11, fontWeight: "bold", marginTop: 4 },
   label: { fontSize: 11, fontWeight: "bold", color: "#475569", marginTop: 8, marginBottom: 4 },

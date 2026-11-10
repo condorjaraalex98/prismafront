@@ -14,7 +14,7 @@ export default function TabLayout() {
   const isMobile = width < 768;
 
   // --- LÓGICA DE INACTIVIDAD (45 MINUTOS / 2,700,000 ms) ---
- const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleLogout = () => {
     if (Platform.OS !== 'web') {
@@ -30,15 +30,12 @@ export default function TabLayout() {
 
   const resetInactivityTimer = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    
-    // Si pasan 45 minutos sin actividad, cierra sesión automáticamente
     timerRef.current = setTimeout(() => {
       logout();
       router.replace('/');
     }, 2700000); 
   };
 
-  // --- LÓGICA DE PROTECCIÓN Y EVENTOS ---
   useEffect(() => {
     if (!loading && !userData) {
       router.replace('/'); 
@@ -46,7 +43,6 @@ export default function TabLayout() {
   }, [userData, loading]);
 
   useEffect(() => {
-    // Iniciamos el temporizador y escuchamos eventos de interacción si estamos en Web
     resetInactivityTimer();
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -68,7 +64,6 @@ export default function TabLayout() {
     };
   }, []);
 
-  // --- PANTALLA DE CARGA ---
   if (loading || !userData) {
     return (
       <View style={styles.loadingContainer}>
@@ -78,7 +73,6 @@ export default function TabLayout() {
     );
   }
 
-  // HEADER PARA MÓVIL: MJM Style
   const MobileHeader = ({ navigation }: any) => (
     <SafeAreaView style={styles.safeHeader}>
       <View style={styles.headerContent}>
@@ -113,30 +107,76 @@ export default function TabLayout() {
   );
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }} onTouchStart={resetInactivityTimer}>
-     <Drawer
-  initialRouteName="principal"
-  drawerContent={(props) => (
-    <Sidebar 
-      {...props} 
-      isExpanded={!isMobile} 
-    />
-  )}
-  screenOptions={({ navigation }) => ({
-    headerShown: false,
-    header: () => <MobileHeader navigation={navigation} />,
-    // Mantiene 'front' en móvil y 'permanent' en Web (escritorio)
-    drawerType: isMobile ? 'front' : 'permanent', 
-    drawerStyle: {
-      width: isMobile ? 300 : 260,
-      backgroundColor: '#004481',
-    },
-    // DESACTIVA el gesto de arrastre en Android/Móvil
-    swipeEnabled: false, 
-  })}
->
-  <Drawer.Screen name="principal" />
-</Drawer>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Drawer
+      
+        drawerContent={(props) => <Sidebar {...props} isExpanded={!isMobile} />}
+        screenOptions={{ headerShown: false, drawerType: isMobile ? 'front' : 'permanent', swipeEnabled: true,
+          // 👈 AGREGA ESTO AQUÍ:
+          drawerStyle: {
+            width: isMobile ? 250 :250, // Modifica estos valores para hacerlo más angosto o ancho
+            backgroundColor: '#004481',  // Mantiene tu color de fondo azul original
+          },
+        }}
+      >
+        {/* AQUÍ SÍ VAN TODAS TUS PANTALLAS PORQUE VIVEN EN TABS */}
+        <Drawer.Screen name="principal" options={{ title: 'Panel Principal' }} />
+        <Drawer.Screen name="cuaderno" options={{ title: 'Cuaderno de Control' }} />
+        <Drawer.Screen name="tactp" options={{ title: 'Táctico Priorizado' }} />
+        <Drawer.Screen name="escseg" options={{ title: 'Escuela Segura' }} />
+        <Drawer.Screen name="rcecom" options={{ title: 'Escuela Segura' }} />
+          <Drawer.Screen name="usuario" options={{ title: 'Usuario' }} />
+           <Drawer.Screen name="crudpnp" options={{ title: 'CrudPNP' }} />
+              <Drawer.Screen name="rolservicio" options={{ title: 'RolServicio' }} />
+            <Drawer.Screen name="crudvia" options={{ title: 'CrudVia' }} />
+ <Drawer.Screen name="operativo" options={{ title: 'operativo' }} />
+                 <Drawer.Screen name="poi" options={{ title: 'Usuario' }} />
+           <Drawer.Screen name="cecomsuper" options={{ title: 'Cecomsuper' }} />
+            <Drawer.Screen name="estadis" options={{ title: 'CrudVia' }} />
+    <Drawer.Screen name="estadist" options={{ title: 'CrudVia' }} />
+             <Drawer.Screen name="crudunidades" options={{ title: 'CrudUnidades' }} />
+                 <Drawer.Screen name="crudlugar" options={{ title: 'CrudLugar' }} />
+         <Drawer.Screen name="cecomdoceh" options={{ title: 'Escuela Segura' }} />
+           <Drawer.Screen name="rcampo" options={{ title: 'Escuela Segura' }} />
+             <Drawer.Screen name="rcampomoto" options={{ title: 'Escuela Segura' }} />
+        <Drawer.Screen name="integrado" options={{ title: 'Patrullaje Integrado' }} />
+        <Drawer.Screen name="sinfrontera" options={{ title: 'Serenazgo sin Fronteras' }} />
+        <Drawer.Screen name="general" options={{ title: 'Otras Novedades' }} />
+        <Drawer.Screen name="inicioser" options={{ title: 'Inicio de Servicio' }} />
+        <Drawer.Screen name="finser" options={{ title: 'Fin de Servicio' }} />
+        <Drawer.Screen name="gar" options={{ title: 'GAR' }} />
+
+          <Drawer.Screen name="sipcop" options={{ title: 'SIPCOP' }} />
+
+            <Drawer.Screen name="sipcopd" options={{ title: 'SIPCOPD' }} />
+
+              <Drawer.Screen name="exportar" options={{ title: 'exportar' }} />
+ <Drawer.Screen name="exportarango" options={{ title: 'exportar rango' }} />
+
+
+
+              <Drawer.Screen name="principalmovilidad" options={{ title: 'movilidad' }} />
+ <Drawer.Screen name="principalDron" options={{ title: 'Dron' }} />
+<Drawer.Screen name="descseg" options={{ title: 'EscDron' }} />
+<Drawer.Screen name="iniciodron" options={{ title: 'iniciodron' }} />
+<Drawer.Screen name="dgeneral" options={{ title: 'generaldron' }} />
+<Drawer.Screen name="escmovilidad" options={{ title: 'escmovilidad'}} />
+<Drawer.Screen name="generalmovilidad" options={{ title: 'generalmovilidad' }} />
+
+<Drawer.Screen name="mapa" options={{ title: 'mapas'}} />
+<Drawer.Screen name="puntos" options={{ title: 'puntos' }} />
+
+<Drawer.Screen name="modaliniciocecom" options={{ title: 'iniciocecom'}} />
+<Drawer.Screen name="cecom" options={{ title: 'cecom' }} />
+<Drawer.Screen name="cecomop" options={{ title: 'cecomop' }} />
+<Drawer.Screen name="modalfincecom" options={{ title: 'modalfincecom' }} />
+
+
+
+
+        <Drawer.Screen name="paramedico" options={{ title: 'Paramédico' }} />
+        <Drawer.Screen name="ambulancia" options={{ title: 'Conductor Ambulancia' }} />
+      </Drawer>
     </GestureHandlerRootView>
   );
 }

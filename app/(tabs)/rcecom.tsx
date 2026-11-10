@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
 const LIMIT_INICIAL = 5;
 
@@ -198,9 +198,19 @@ export default function GraficoEstadisticasScreen() {
   const [direccionesModalidad, setDireccionesModalidad] = useState<DireccionItem[]>([]);
   const [loadingDirecciones, setLoadingDirecciones] = useState<boolean>(false);
 
-  const textoTurno = useMemo(() => obtenerTextoTurnoActual(), []);
+const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoActual());
 
-  // Cargar catálogo de nombres descriptivos para los 5 orígenes
+useEffect(() => {
+  // Actualizar el estado al montar el componente
+  setTextoTurno(obtenerTextoTurnoActual());
+
+  // Verificar la hora cada 30 segundos
+  const interval = setInterval(() => {
+    setTextoTurno(obtenerTextoTurnoActual());
+  }, 30000);
+
+  return () => clearInterval(interval);
+}, []);
   useEffect(() => {
     fetch(`${API_BASE_URL}/ocurrencias/catalogos-filtros`)
       .then((res) => res.json())
@@ -557,7 +567,7 @@ const styles = StyleSheet.create({
   },
   origenBadgeCountText: {
     color: "#ffffff",
-    fontSize: 11,
+    fontSize: 15,
     fontWeight: "900",
   },
   cardsSubGrid: {

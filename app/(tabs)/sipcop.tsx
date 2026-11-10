@@ -6,7 +6,8 @@ import * as XLSX from "xlsx";
 
 // Hook de autenticación global
 import { useAuth } from "../../context/userContext";
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "${API_URL}";
+
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
 interface CatalogoItem {
   value: number | string;

@@ -13,6 +13,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  Alert,
   TextInput,
   TouchableOpacity,
   useWindowDimensions,
@@ -21,7 +22,7 @@ import {
 import * as XLSX from "xlsx";
 
 // 📌 CORRECCIÓN DE LA URL BASE
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.15:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 
 const ThemedText = ({ style, children, ...props }: any) => (
   <Text style={style} {...props}>
@@ -369,7 +370,9 @@ export default function PersonaScreen() {
     }
   };
 
-  const handleGuardarNuevo = async () => {
+ const handleGuardarNuevo = async () => {
+    if (loading) return;
+
     let newErrors: any = {};
     const { nombres, apellido_paterno, apellido_materno, documento_numero } = nuevaPersona;
 
@@ -390,22 +393,29 @@ export default function PersonaScreen() {
     }
 
     setErrors({});
+    setLoading(true);
 
     try {
-      setLoading(true);
-      const checkRes = await fetch(
-        `${API_URL}/personas/check/${documento_numero}`
-      );
+      const checkRes = await fetch(`${API_URL}/personas/check/${documento_numero}`);
       const checkData = await checkRes.json();
 
       if (checkData.exists) {
-        setCustomAlert({
-          visible: true,
-          title: "DNI Duplicado",
-          message: "Este número de documento ya está registrado.",
-          type: "error",
-        });
-        setLoading(false);
+        setLoading(false); // 👈 Importante liberar la carga primero
+        
+        // 📌 Solución: Usar Alert nativo en móvil para evitar que se oculte tras el modal
+        if (Platform.OS !== "web") {
+          Alert.alert(
+            "DNI Duplicado",
+            "Este número de documento ya está registrado en el sistema."
+          );
+        } else {
+          setCustomAlert({
+            visible: true,
+            title: "DNI Duplicado",
+            message: "Este número de documento ya está registrado.",
+            type: "error",
+          });
+        }
         return;
       }
 
@@ -418,21 +428,42 @@ export default function PersonaScreen() {
       if (res.ok) {
         setModalCrearVisible(false);
         setNuevaPersona(INITIAL_PERSONA_STATE);
-        setCustomAlert({
-          visible: true,
-          title: "¡Éxito!",
-          message: "El personal ha sido registrado correctamente.",
-          type: "success",
-        });
+        
+        if (Platform.OS !== "web") {
+          Alert.alert("¡Éxito!", "El personal ha sido registrado correctamente.");
+        } else {
+          setCustomAlert({
+            visible: true,
+            title: "¡Éxito!",
+            message: "El personal ha sido registrado correctamente.",
+            type: "success",
+          });
+        }
         cargarDatos(true);
+      } else {
+        const errorData = await res.json();
+        if (Platform.OS !== "web") {
+          Alert.alert("Error", errorData.error || "No se pudo registrar.");
+        } else {
+          setCustomAlert({
+            visible: true,
+            title: "Error",
+            message: errorData.error || "No se pudo registrar.",
+            type: "error",
+          });
+        }
       }
     } catch (e) {
-      setCustomAlert({
-        visible: true,
-        title: "Error de Red",
-        message: "No se pudo conectar con el servidor.",
-        type: "error",
-      });
+      if (Platform.OS !== "web") {
+        Alert.alert("Error de Red", "No se pudo conectar con el servidor.");
+      } else {
+        setCustomAlert({
+          visible: true,
+          title: "Error de Red",
+          message: "No se pudo conectar con el servidor.",
+          type: "error",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -496,15 +527,15 @@ export default function PersonaScreen() {
             </View>
           </View>
 
-          <TouchableOpacity
-            style={styles.btnAdd}
-            onPress={() => {
-              setErrors({});
-              setModalCrearVisible(true);
-            }}
-          >
-            <Ionicons name="person-add" size={18} color="white" />
-          </TouchableOpacity>
+        <TouchableOpacity
+    style={styles.btnAdd}
+    onPress={() => {
+      setErrors({});
+      setTimeout(() => setModalCrearVisible(true), 50); // 👈 Da respiro a la animación del modal
+    }}
+  >
+    <Ionicons name="person-add" size={18} color="white" />
+  </TouchableOpacity>
         </View>
 
         <View style={{ flexDirection: "column", gap: 8, marginBottom: 10 }}>
@@ -675,11 +706,7 @@ export default function PersonaScreen() {
         windowSize={5}
         removeClippedSubviews={Platform.OS !== "web"}
         contentContainerStyle={{ paddingBottom: 20 }}
-        ListFooterComponent={
-          loading ? (
-            <ActivityIndicator size="small" color={MJM_BLUE} style={{ marginVertical: 15 }} />
-          ) : null
-        }
+      ListFooterComponent={loading ? <ActivityIndicator size="small" color={MJM_BLUE} style={{ margin: 15 }} /> : undefined}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={isDesktop ? styles.tableRow : styles.mobileCard}
@@ -913,56 +940,69 @@ export default function PersonaScreen() {
                       onChangeText={(t) => setPersonaEdit({ ...personaEdit, correo: t })}
                     />
 
-                    <ThemedText style={styles.label}>Género</ThemedText>
-                    <View style={styles.modalPickerContainer}>
+                <ThemedText style={styles.label}>Género</ThemedText>
+                    <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
                       <Picker
                         selectedValue={personaEdit?.genero ?? ""}
+                        style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+                        itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+                        dropdownIconColor="#000000"
                         onValueChange={(val) =>
                           setPersonaEdit((prev: any) => ({ ...prev, genero: val || null }))
                         }
                       >
-                        <Picker.Item label="Seleccionar Género..." value="" />
-                        <Picker.Item label="MASCULINO" value="M" />
-                        <Picker.Item label="FEMENINO" value="F" />
+                        <Picker.Item label="Seleccionar Género..." value="" color="#888888" />
+                        <Picker.Item label="MASCULINO" value="M" color="#000000" />
+                        <Picker.Item label="FEMENINO" value="F" color="#000000" />
                       </Picker>
                     </View>
 
                     <ThemedText style={styles.label}>Estado Laboral</ThemedText>
-                    <View style={styles.modalPickerContainer}>
+                    <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
                       <Picker
                         selectedValue={personaEdit.estado_laboral}
+                        style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+                        itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+                        dropdownIconColor="#000000"
                         onValueChange={(val) => setPersonaEdit({ ...personaEdit, estado_laboral: val })}
                       >
-                        <Picker.Item label="ACTIVO" value="ACTIVO" />
-                        <Picker.Item label="INACTIVO" value="INACTIVO" />
+                        <Picker.Item label="ACTIVO" value="ACTIVO" color="#000000" />
+                        <Picker.Item label="INACTIVO" value="INACTIVO" color="#000000" />
                       </Picker>
                     </View>
 
                     <ThemedText style={styles.label}>Régimen</ThemedText>
-                    <View style={styles.modalPickerContainer}>
+                    <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
                       <Picker
                         selectedValue={personaEdit.regimen}
+                        style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+                        itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+                        dropdownIconColor="#000000"
                         onValueChange={(val) => setPersonaEdit({ ...personaEdit, regimen: val })}
                       >
-                        <Picker.Item label="CAS" value="CAS" />
-                        <Picker.Item label="LOCADOR" value="LOCADOR" />
-                        <Picker.Item label="D.L. 728" value="D.L. 728" />
-                        <Picker.Item label="D.L. 276" value="D.L. 276" />
+                        <Picker.Item label="CAS" value="CAS" color="#000000" />
+                        <Picker.Item label="LOCADOR" value="LOCADOR" color="#000000" />
+                        <Picker.Item label="D.L. 728" value="D.L. 728" color="#000000" />
+                        <Picker.Item label="D.L. 276" value="D.L. 276" color="#000000" />
                       </Picker>
                     </View>
 
                     <ThemedText style={styles.label}>Cargo / Unidad</ThemedText>
-                    <View style={styles.modalPickerContainer}>
+                    <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
                       <Picker
                         selectedValue={personaEdit.id_unidad != null ? String(personaEdit.id_unidad) : ""}
+                        style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+                        itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+                        dropdownIconColor="#000000"
                         onValueChange={(val) => setPersonaEdit({ ...personaEdit, id_unidad: val })}
                       >
-                        <Picker.Item label="Seleccionar Unidad..." value="" />
+                        <Picker.Item label="Seleccionar Unidad..." value="" color="#888888" />
                         {unidades.map((u) => (
                           <Picker.Item
                             key={String(u.id_unidad)}
                             label={u.nombre_unidad || ""}
                             value={String(u.id_unidad)}
+                            color="#000000"
                           />
                         ))}
                       </Picker>
@@ -1099,45 +1139,55 @@ export default function PersonaScreen() {
               />
 
               <ThemedText style={styles.label}>Estado Laboral</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevaPersona.estado_laboral}
-                  onValueChange={(val) => setNuevaPersona({ ...nuevaPersona, estado_laboral: val })}
-                >
-                  <Picker.Item label="ACTIVO" value="ACTIVO" />
-                  <Picker.Item label="INACTIVO" value="INACTIVO" />
-                </Picker>
-              </View>
+             <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={nuevaPersona.estado_laboral}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setNuevaPersona({ ...nuevaPersona, estado_laboral: val })}
+  >
+    <Picker.Item label="ACTIVO" value="ACTIVO" color="#000000" />
+    <Picker.Item label="INACTIVO" value="INACTIVO" color="#000000" />
+  </Picker>
+</View>
 
               <ThemedText style={styles.label}>Régimen</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevaPersona.regimen || 'LOCADOR'}
-                  onValueChange={(val) => setNuevaPersona({ ...nuevaPersona, regimen: val })}
-                >
-                  <Picker.Item label="LOCADOR" value="LOCADOR" />
-                  <Picker.Item label="CAS" value="CAS" />
-                  <Picker.Item label="D.L. 728" value="D.L. 728" />
-                  <Picker.Item label="D.L. 276" value="D.L. 276" />
-                </Picker>
-              </View>
+            <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={nuevaPersona.regimen || 'LOCADOR'}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setNuevaPersona({ ...nuevaPersona, regimen: val })}
+  >
+    <Picker.Item label="LOCADOR" value="LOCADOR" color="#000000" />
+    <Picker.Item label="CAS" value="CAS" color="#000000" />
+    <Picker.Item label="D.L. 728" value="D.L. 728" color="#000000" />
+    <Picker.Item label="D.L. 276" value="D.L. 276" color="#000000" />
+  </Picker>
+</View>
 
               <ThemedText style={styles.label}>Cargo / Unidad *</ThemedText>
-              <View style={styles.modalPickerContainer}>
-                <Picker
-                  selectedValue={nuevaPersona.id_unidad ? String(nuevaPersona.id_unidad) : ""}
-                  onValueChange={(val) => setNuevaPersona({ ...nuevaPersona, id_unidad: val })}
-                >
-                  <Picker.Item label="Seleccionar Unidad..." value="" />
-                  {unidades.map((u) => (
-                    <Picker.Item
-                      key={String(u.id_unidad)}
-                      label={u.nombre_unidad || ""}
-                      value={String(u.id_unidad)}
-                    />
-                  ))}
-                </Picker>
-              </View>
+           <View style={[styles.modalPickerContainer, { backgroundColor: "#FFFFFF" }]}>
+  <Picker
+    selectedValue={nuevaPersona.id_unidad ? String(nuevaPersona.id_unidad) : ""}
+    style={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    itemStyle={{ color: "#000000", backgroundColor: "#FFFFFF" }}
+    dropdownIconColor="#000000"
+    onValueChange={(val) => setNuevaPersona({ ...nuevaPersona, id_unidad: val })}
+  >
+    <Picker.Item label="Seleccionar Unidad..." value="" color="#888888" />
+    {unidades.map((u) => (
+      <Picker.Item
+        key={String(u.id_unidad)}
+        label={u.nombre_unidad || ""}
+        value={String(u.id_unidad)}
+        color="#000000"
+      />
+    ))}
+  </Picker>
+</View>
 
               <TouchableOpacity
                 style={[styles.btnGuardar, { backgroundColor: "#024885", marginTop: 25 }]}
@@ -1230,6 +1280,7 @@ const styles = StyleSheet.create({
   alertContent: { backgroundColor: "white", borderRadius: 16, padding: 20, width: "100%", maxWidth: 320, alignItems: "center" },
   cellBorder: { borderRightWidth: 1, borderRightColor: "rgba(203, 213, 225, 0.4)" },
   modalContent: { backgroundColor: "white", borderRadius: 16, padding: 18, width: "100%", maxWidth: 480, maxHeight: "90%" },
+  
   largeAvatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 6 },
   rowForm: { flexDirection: "row", gap: 8 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "#EEE" },
