@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Alert, Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
@@ -12,7 +12,7 @@ export default function TabLayout() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
-
+const pathname = usePathname();
   // --- LÓGICA DE INACTIVIDAD (45 MINUTOS / 2,700,000 ms) ---
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -37,21 +37,28 @@ export default function TabLayout() {
   };
 
  useEffect(() => {
-    if (!loading) {
-      if (!userData) {
-        router.replace('/');
-        return;
-      }
-
-      // Si recargan la página y son Rol 4 o 5, aseguramos que se queden en su respectiva pantalla
-      const rol = Number(userData.id_rol);
-      if (rol === 4) {
-        router.replace('/principalDron');
-      } else if (rol === 5) {
-        router.replace('/principalmovilidad');
-      }
+  if (!loading) {
+    if (!userData) {
+      router.replace('/');
+      return;
     }
-  }, [userData, loading]);
+
+    const rol = Number(userData.id_rol);
+    if (rol === 4) {
+      router.replace('/principalDron');
+      return;
+    }
+    if (rol === 5) {
+      router.replace('/principalmovilidad');
+      return;
+    }
+
+    // Si entra desde móvil y quedó la URL /cecomdoceh abierta en caché/pestaña, lo manda directo a /principal
+    if (isMobile && pathname === '/cecomdoceh' && (rol === 1 || rol === 3)) {
+      router.replace('/principal');
+    }
+  }
+}, [userData, loading, isMobile, pathname]);
 
   useEffect(() => {
     resetInactivityTimer();

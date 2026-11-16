@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import * as XLSX from "xlsx";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
 const MJM_BLUE = "#024885";
 
 const ThemedText = ({ style, children, ...props }: any) => (

@@ -30,7 +30,7 @@ import { Dropdown } from "react-native-element-dropdown";
 import { useAuth } from "../../context/userContext";
 
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
 
 type FotoEstado = {
   id: string;

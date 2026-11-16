@@ -48,7 +48,7 @@ interface RegistroProps {
   initialData?: any;
 }
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
 type FotoEstado = {
   uri: string;
   url_remota: string | null;

@@ -21,7 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as XLSX from "xlsx";
 
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
 
 const ThemedText = ({ style, children, ...props }: any) => (
   <Text style={style} {...props}>

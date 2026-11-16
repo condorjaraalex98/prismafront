@@ -21,7 +21,7 @@ import { useAuth } from "../context/userContext";
 
 const MJM_BLUE = "#024885";
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
 const BACKGROUND_IMAGE =
   "https://www.munijesusmaria.gob.pe/wp-content/uploads/2025/01/WhatsApp-Image-2025-01-20-at-10.19.12-AM.jpeg";
 
@@ -72,11 +72,18 @@ export default function HomeScreen() {
     if (response.ok) {
         login(data);
 
-        const rol = Number(data.id_rol);
-        const esAppMovil = Platform.OS !== "web";
+      const rol = Number(data.id_rol);
+        const esNavegadorMovil =
+          Platform.OS === "web" &&
+          typeof navigator !== "undefined" &&
+          /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+            navigator.userAgent
+          );
+        const esMovil =
+          Platform.OS !== "web" || windowWidth < 768 || esNavegadorMovil;
 
         setTimeout(() => {
-          // 🚀 1. Redirección automática para Drones (Rol 4)
+          // 1. Drones (Rol 4)
           if (rol === 4) {
             router.replace({
               pathname: "/principalDron",
@@ -85,7 +92,7 @@ export default function HomeScreen() {
             return;
           }
 
-          // 🚀 2. Redirección automática para Movilidad Urbana (Rol 5)
+          // 2. Movilidad Urbana (Rol 5)
           if (rol === 5) {
             router.replace({
               pathname: "/principalmovilidad",
@@ -94,10 +101,10 @@ export default function HomeScreen() {
             return;
           }
 
-          // 3. Comportamiento normal para el resto de roles según plataforma
-          if (esAppMovil) {
+          // 3. Celular (APK o navegador móvil) -> /principal | PC -> /cecomdoceh
+          if (esMovil) {
             router.replace({
-              pathname: "/(tabs)/principal",
+              pathname: "/principal",
               params: { idUsuario: data.id },
             });
           } else {

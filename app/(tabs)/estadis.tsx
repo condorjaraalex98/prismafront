@@ -18,7 +18,7 @@ import {
 import { LineChart } from "react-native-gifted-charts";
 
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
 
 const MJM_BLUE = "#024885";
 const COLOR_M = "#38bdf8";

@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
 const MJM_BLUE = "#024885";
 const LIMIT_INICIAL = 5;
 const PERMITIDOS_PATRULLAJE = [1, 2, 3, 4, 6, 8];
