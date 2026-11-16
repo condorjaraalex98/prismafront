@@ -1,12 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
-import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-// Hook de autenticación global
+import { comprimirImagen } from "@/utils/compressImage";
+import { subirFotoAlServidor } from "@/utils/subirFotoServidor";
 import { useAuth } from "../../context/userContext";
 
-// Modales de inserción de registros
 import RegistroBoton from "./modalboton";
 import RegistroRedes from "./modalredes";
 import RegistroOcurrenciat from "./modaltele";
@@ -15,8 +13,10 @@ import RegistroOperador from "./modaloper";
 import RegistroSerIn from "./modaliniciocecom";
 import RegistroSerFi from "./modalfincecom";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+export const API_URL =
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
+const R2_DOMAIN_DEFAULT = "pub-bce5ad6110584baca6912e8944cd2051.r2.dev";
 
 interface Ocurrencia {
   id_ocurrencia: number | string;
@@ -24,7 +24,7 @@ interface Ocurrencia {
   distancia_metros?: number;
   placa_con_tipo?: string;
   tipo_asignacion?: string;
-  camaras_json?: string;
+  camaras_json?: string | string[];
   codigo_seguimiento?: string;
   origen_descripcion?: string;
   fecha_evento: string;
@@ -37,24 +37,21 @@ interface Ocurrencia {
   referencia?: string;
   persona_nombre_completo: string;
   persona_dni: string;
-  vehiculos_json: string;
+  vehiculos_json?: string | string[];
+  vehiculos?: string[];
   numero_telefono: number;
   id_usuario: string;
   nombre_informante: string;
   modalidad_nombre: string;
   via_nombre?: string;
-  camaras: string;
-  fotos_json?: string;
+  camaras?: string[];
+  fotos_json?: string | string[];
   lista_fotos?: string[];
   fotos?: string[];
   cuadra?: string | number;
   tipo_patrullaje_nombre?: string;
   mod_patrullaje_nombre?: string;
   value?: number;
-  foto_1: String;
-  foto_2: String;
-  foto_3: String;
-  foto_4: String;
   label?: string;
   total_fotos?: number;
   foto_principal?: string;
@@ -62,76 +59,110 @@ interface Ocurrencia {
   descripcion?: string;
 }
 
-interface Lugar {
-  id: number | string;
-  nombre: string;
-  [key: string]: any;
-}
+const getHoyLocal = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+const obtenerUrlFoto = (foto: any): string => {
+  if (!foto) return "";
+  let ruta =
+    typeof foto === "string"
+      ? foto
+      : foto?.url_imagen || foto?.url || foto?.path || "";
+  if (!ruta) return "";
+
+  ruta = String(ruta).replace(/[\[\]'"]+/g, "").trim();
+  const firstIndex = ruta.indexOf(R2_DOMAIN_DEFAULT);
+  if (firstIndex !== -1) {
+    const protocolIndex = ruta.lastIndexOf("http", firstIndex);
+    const startIndex = protocolIndex !== -1 ? protocolIndex : firstIndex;
+    const cleanSub = ruta.slice(startIndex);
+    const matchExt = cleanSub.match(
+      /^(https?:\/\/[^\s\)]+?\.(jpg|jpeg|png|webp|gif))/i
+    );
+    if (matchExt && matchExt[1]) {
+      ruta = matchExt[1];
+    } else {
+      const secondIndex = cleanSub.indexOf(
+        R2_DOMAIN_DEFAULT,
+        R2_DOMAIN_DEFAULT.length
+      );
+      ruta = secondIndex !== -1 ? cleanSub.slice(0, secondIndex) : cleanSub;
+    }
+  }
+
+  if (
+    ruta.startsWith("http://") ||
+    ruta.startsWith("https://") ||
+    ruta.startsWith("data:image")
+  ) {
+    return ruta;
+  }
+
+  return `${API_URL.replace(/\/+$/, "")}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
+};
+
+const formatearFechaConDia = (fechaStr: string): string => {
+  if (!fechaStr) return "S/F";
+  const soloFecha = String(fechaStr).split("T")[0].split(" ")[0];
+  const fechaLimpia = soloFecha.replace(/-/g, "/");
+  const fechaObjReal = new Date(fechaLimpia);
+  if (Number.isNaN(fechaObjReal.getTime())) return fechaStr;
+
+  const diaSemana = fechaObjReal
+    .toLocaleDateString("es-PE", { weekday: "short" })
+    .replace(".", "")
+    .toLowerCase();
+  const fechaNumerica = fechaObjReal.toLocaleDateString("es-PE");
+  return `${diaSemana} ${fechaNumerica}`;
+};
+
+const formatearFechaRegistro = (fechaReporte?: string, fallbackEvento?: string): string => {
+  if (!fechaReporte) return fallbackEvento || "S/F";
+  const isoCompat = String(fechaReporte).trim().replace(" ", "T");
+  const fechaObj = new Date(isoCompat);
+  if (Number.isNaN(fechaObj.getTime())) return fechaReporte;
+
+  const diaSemana = fechaObj
+    .toLocaleDateString("es-PE", { weekday: "short" })
+    .replace(".", "")
+    .toLowerCase();
+  const fechaNumerica = fechaObj.toLocaleDateString("es-PE");
+  const hora = fechaObj.toLocaleTimeString("es-PE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${diaSemana} ${fechaNumerica} - ${hora}`;
+};
 
 export default function ReportesWebScreen() {
-  const router = useRouter();
   const { userData } = useAuth();
+  const userIdStable = userData?.id || null;
+
   const [loading, setLoading] = useState(false);
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [subiendoFotoEdicion, setSubiendoFotoEdicion] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState("Actualizando...");
   const [isFinished, setIsFinished] = useState(false);
+
   const [totalMisRegistros, setTotalMisRegistros] = useState(0);
-  const [totalSinRestriccionBD, setTotalSinRestriccionBD] = useState(0); // Total global para el título
-  const [listaUbicaciones, setListaUbicaciones] = useState<any[]>([]);
+  const [totalSinRestriccionBD, setTotalSinRestriccionBD] = useState(0);
+  const [listaUbicaciones, setListaUbicaciones] = useState<
+    { value: any; label: string }[]
+  >([]);
 
-  const obtenerUrlFoto = (foto: any) => {
-    if (!foto) return "";
-    let ruta = typeof foto === "string" ? foto : (foto?.url_imagen || foto?.url || foto?.path || "");
-    if (!ruta) return "";
-
-    ruta = String(ruta).replace(/[\[\]'"]+/g, "").trim();
-    const r2Domain = "pub-bce5ad6110584baca6912e8944cd2051.r2.dev";
-    const firstIndex = ruta.indexOf(r2Domain);
-    if (firstIndex !== -1) {
-      const protocolIndex = ruta.lastIndexOf("http", firstIndex);
-      const startIndex = protocolIndex !== -1 ? protocolIndex : firstIndex;
-      const cleanSub = ruta.slice(startIndex);
-      const matchExt = cleanSub.match(/^(https?:\/\/[^\s\)]+?\.(jpg|jpeg|png|webp|gif))/i);
-      if (matchExt && matchExt[1]) {
-        ruta = matchExt[1];
-      } else {
-        const secondIndex = cleanSub.indexOf(r2Domain, r2Domain.length);
-        ruta = secondIndex !== -1 ? cleanSub.slice(0, secondIndex) : cleanSub;
-      }
-    }
-
-    if (ruta.startsWith("http://") || ruta.startsWith("https://") || ruta.startsWith("data:image")) {
-      return ruta;
-    }
-
-    const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://prismaocurrecias.onrender.com";
-    return `${API_URL}${ruta.startsWith("/") ? "" : "/"}${ruta}`;
-  };
-
-  const formatearFechaConDia = (fechaStr: string) => {
-    if (!fechaStr) return "S/F";
-    const fechaLimpia = String(fechaStr).includes("-")
-      ? String(fechaStr).replace(/-/g, "/")
-      : fechaStr;
-    const fechaObjReal = new Date(fechaLimpia);
-    if (isNaN(fechaObjReal.getTime())) return fechaStr;
-
-    const diaSemana = fechaObjReal
-      .toLocaleDateString("es-PE", { weekday: "short" })
-      .replace(".", "")
-      .toLowerCase();
-    const fechaNumerica = fechaObjReal.toLocaleDateString("es-PE");
-    return `${diaSemana} ${fechaNumerica}`;
-  };
-
-  // ESTADOS PRINCIPALES
   const [registroEditar, setRegistroEditar] = useState<Ocurrencia | null>(null);
   const [reportesCompletos, setReportesCompletos] = useState<Ocurrencia[]>([]);
-  
-  // 1. Filtro de propietario (TODOS o MIS REGISTROS)
-  const [filtroPropietario, setFiltroPropietario] = useState<"TODOS" | "MIOS">("TODOS");
-  
-  // 2. INTERRUPTOR DE REPORTE DE SERVICIO (Prender / Apagar solo 139 y 140)
+
+  const [filtroPropietario, setFiltroPropietario] = useState<"TODOS" | "MIOS">(
+    "TODOS"
+  );
   const [reporteServicioActivo, setReporteServicioActivo] = useState(false);
 
   const [paginaActual, setPaginaActual] = useState(1);
@@ -139,80 +170,282 @@ export default function ReportesWebScreen() {
   const [totalRegistrosBD, setTotalRegistrosBD] = useState(0);
 
   const [modalInsertOpen, setModalInsertOpen] = useState<string | null>(null);
-  const [detalleSeleccionado, setDetalleSeleccionado] = useState<Ocurrencia | null>(null);
-  const [lugares, setLugares] = useState<Lugar[]>([]);
+  const [detalleSeleccionado, setDetalleSeleccionado] =
+    useState<Ocurrencia | null>(null);
   const [modalConfirmacionOpen, setModalConfirmacionOpen] = useState(false);
   const [mostrarDesplegable, setMostrarDesplegable] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
 
-  const [fechaInicioInput, setFechaInicioInput] = useState("");
-  const [fechaFinInput, setFechaFinInput] = useState("");
-  const [fechasFiltro, setFechasFiltro] = useState<{ inicio: string; fin: string } | null>(null);
+  const isMountedRef = useRef(true);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const lugaresCargadosRef = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchLugares = async (tipoLugarId: string) => {
+  const limpiarTimersEdicion = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      fetchAbortRef.current?.abort();
+      limpiarTimersEdicion();
+    };
+  }, [limpiarTimersEdicion]);
+
+  const fetchLugares = useCallback(async (tipoLugarId: string) => {
+    if (lugaresCargadosRef.current) return;
     try {
-      const queryTipo = tipoLugarId && tipoLugarId !== "default" ? tipoLugarId : "4";
-      const response = await fetch(`${API_URL}/catalogos/lugares?tipo=${queryTipo}`);
+      const queryTipo =
+        tipoLugarId && tipoLugarId !== "default" ? tipoLugarId : "4";
+      const response = await fetch(
+        `${API_URL}/catalogos/lugares?tipo=${queryTipo}`
+      );
       if (!response.ok) throw new Error("Error al obtener lugares");
       const data = await response.json();
       const lista = Array.isArray(data) ? data : data.data || [];
 
       const opcionesUbicaciones = lista.map((item: any) => ({
         value: item.id || item.id_lugar || item.value,
-        label: item.nombre || item.descripcion || item.direccion || item.label || `Lugar #${item.id}`,
+        label:
+          item.nombre ||
+          item.descripcion ||
+          item.direccion ||
+          item.label ||
+          `Lugar #${item.id}`,
       }));
 
+      if (!isMountedRef.current) return;
+      lugaresCargadosRef.current = true;
       setListaUbicaciones(opcionesUbicaciones);
     } catch (error) {
       console.error("Error al cargar lugares:", error);
     }
-  };
-
-  useEffect(() => {
-    fetchLugares("4");
   }, []);
 
-  const fetchTotalMisRegistros = useCallback(() => {
-    if (userData?.id) {
-      fetch(`${API_URL}/ocurrencias/listar/tablasipcop-rango12h?limit=1&id_usuario=${userData.id}`)
-        .then((res) => res.json())
-        .then((json) => {
-          if (json && json.success) {
-            setTotalMisRegistros(json.total || 0);
-          }
-        })
-        .catch((err) => console.error("Error al obtener total personal:", err));
+  const fetchContadores = useCallback(async () => {
+    try {
+      const promesas: Promise<Response>[] = [
+        fetch(`${API_URL}/ocurrencias/listar/tablasipcop-rango12h?limit=1`),
+      ];
+      if (userIdStable) {
+        promesas.push(
+          fetch(
+            `${API_URL}/ocurrencias/listar/tablasipcop-rango12h?limit=1&id_usuario=${encodeURIComponent(
+              userIdStable
+            )}`
+          )
+        );
+      }
+
+      const [resTotal, resMios] = await Promise.all(promesas);
+      const jsonTotal = await resTotal.json();
+      const jsonMios = resMios ? await resMios.json() : null;
+
+      if (!isMountedRef.current) return;
+      if (jsonTotal?.success) setTotalSinRestriccionBD(jsonTotal.total || 0);
+      if (jsonMios?.success) setTotalMisRegistros(jsonMios.total || 0);
+    } catch (err) {
+      console.error("Error al obtener contadores:", err);
     }
-  }, [userData]);
-
-  const fetchTotalSinRestriccion = useCallback(() => {
-    fetch(`${API_URL}/ocurrencias/listar/tablasipcop-rango12h?limit=1`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (json && json.success) {
-          setTotalSinRestriccionBD(json.total || 0);
-        }
-      })
-      .catch((err) => console.error("Error al obtener total sin restricciones:", err));
-  }, []);
+  }, [userIdStable]);
 
   useEffect(() => {
-    fetchTotalMisRegistros();
-    fetchTotalSinRestriccion();
-  }, [fetchTotalMisRegistros, fetchTotalSinRestriccion]);
+    fetchContadores();
+  }, [fetchContadores]);
+
+  const fetchOcurrencias = useCallback(
+    async (page: number, limit: number) => {
+      fetchAbortRef.current?.abort();
+      const controller = new AbortController();
+      fetchAbortRef.current = controller;
+
+      setLoading(true);
+
+      try {
+        let url = `${API_URL}/ocurrencias/listar/tablasipcop-rango12h?page=${page}&limit=${limit}`;
+
+        if (filtroPropietario === "MIOS" && userIdStable) {
+          url += `&id_usuario=${encodeURIComponent(userIdStable)}`;
+        } else if (reporteServicioActivo) {
+          url += `&filtro_modalidad=SOLO_139_140`;
+        } else {
+          url += `&filtro_modalidad=EXCLUIR_139_140`;
+        }
+
+        const response = await fetch(url, { signal: controller.signal });
+        const json = await response.json();
+
+        if (!isMountedRef.current) return;
+        if (json && json.success && Array.isArray(json.data)) {
+          setReportesCompletos(json.data);
+          setTotalRegistrosBD(json.total || 0);
+        } else {
+          setReportesCompletos([]);
+          setTotalRegistrosBD(0);
+        }
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        console.error("Error al obtener datos operativos:", error);
+        if (isMountedRef.current) {
+          setReportesCompletos([]);
+          setTotalRegistrosBD(0);
+        }
+      } finally {
+        if (isMountedRef.current && fetchAbortRef.current === controller) {
+          setLoading(false);
+        }
+      }
+    },
+    [filtroPropietario, reporteServicioActivo, userIdStable]
+  );
+
+  useEffect(() => {
+    fetchOcurrencias(paginaActual, registrosPorPagina);
+  }, [paginaActual, registrosPorPagina, fetchOcurrencias]);
+
+  // Refresco seguro al cerrar cualquiera de los 7 modales sin doble petición
+  const handleCloseModalInsert = useCallback(() => {
+    setModalInsertOpen(null);
+    fetchContadores();
+
+    if (filtroPropietario === "TODOS" && paginaActual === 1) {
+      fetchOcurrencias(1, registrosPorPagina);
+    } else {
+      setFiltroPropietario("TODOS");
+      setPaginaActual(1);
+    }
+  }, [
+    filtroPropietario,
+    paginaActual,
+    registrosPorPagina,
+    fetchContadores,
+    fetchOcurrencias,
+  ]);
+
+  // Validación de horas para el modal de edición (bloquea el botón Guardar)
+  const horasEdicionInvalidas = useMemo(() => {
+    if (
+      !registroEditar?.hora_alerta ||
+      !registroEditar?.hora_llegada ||
+      !registroEditar?.hora_repliegue
+    ) {
+      return false;
+    }
+
+    const aMinutos = (horaStr: string) => {
+      const [h, m] = horaStr.split(":").map(Number);
+      if (Number.isNaN(h) || Number.isNaN(m)) return NaN;
+      return h * 60 + m;
+    };
+
+    const alerta = aMinutos(registroEditar.hora_alerta);
+    let llegada = aMinutos(registroEditar.hora_llegada);
+    let repliegue = aMinutos(registroEditar.hora_repliegue);
+    if (Number.isNaN(alerta) || Number.isNaN(llegada) || Number.isNaN(repliegue)) {
+      return true;
+    }
+
+    if (llegada < alerta) llegada += 1440;
+    if (repliegue < alerta) repliegue += 1440;
+    if (repliegue < llegada) repliegue += 1440;
+
+    const secuenciaCorrecta = alerta <= llegada && llegada <= repliegue;
+    const dentroDe12Horas = repliegue - alerta <= 12 * 60;
+    return !secuenciaCorrecta || !dentroDe12Horas;
+  }, [
+    registroEditar?.hora_alerta,
+    registroEditar?.hora_llegada,
+    registroEditar?.hora_repliegue,
+  ]);
+
+  const ubicacionesFiltradas = useMemo(() => {
+    const q = filtroTexto.trim().toLowerCase();
+    if (!q) return listaUbicaciones;
+    return listaUbicaciones.filter((l) =>
+      (l.label || "").toLowerCase().includes(q)
+    );
+  }, [listaUbicaciones, filtroTexto]);
+
+  // Subida directa a R2 en el modal de edición (sin mandar Base64 pesado al PUT)
+  const handleFileChangeEdicion = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0 || !registroEditar) return;
+
+      const fotosActuales = registroEditar.lista_fotos || [];
+      const espacioDisponible = 4 - fotosActuales.length;
+      if (espacioDisponible <= 0) {
+        alert("Ya has alcanzado el límite máximo de 4 fotos.");
+        e.target.value = "";
+        return;
+      }
+
+      const archivosAProcesar = Array.from(files).slice(0, espacioDisponible);
+      setSubiendoFotoEdicion(true);
+
+      try {
+        const urlsSubidas = await Promise.all(
+          archivosAProcesar.map(async (file) => {
+            const comprimida = await comprimirImagen(file);
+            return subirFotoAlServidor(
+              comprimida,
+              API_URL,
+              undefined,
+              registroEditar.fecha_evento?.split("T")[0]
+            );
+          })
+        );
+
+        if (!isMountedRef.current) return;
+        setRegistroEditar((prev) =>
+          prev
+            ? {
+                ...prev,
+                lista_fotos: [...(prev.lista_fotos || []), ...urlsSubidas],
+              }
+            : null
+        );
+      } catch (error: any) {
+        console.error("Error subiendo fotos en edición:", error);
+        alert(error?.message || "No se pudo subir una o más imágenes.");
+      } finally {
+        if (isMountedRef.current) setSubiendoFotoEdicion(false);
+        e.target.value = "";
+      }
+    },
+    [registroEditar]
+  );
 
   const handleGuardarCambios = async () => {
-    if (!registroEditar) return;
+    if (!registroEditar || guardandoEdicion || subiendoFotoEdicion) return;
+    if (horasEdicionInvalidas) {
+      alert("Corrige la secuencia u horario antes de guardar.");
+      return;
+    }
 
-    setLoading(true);
+    limpiarTimersEdicion();
+    setGuardandoEdicion(true);
     setUploadProgress(0);
     setUploadStatus("Actualizando...");
     setIsFinished(false);
 
-    const interval = setInterval(
+    intervalRef.current = setInterval(
       () => setUploadProgress((p) => (p < 90 ? p + 10 : p)),
-      100,
+      100
     );
+
+    const controller = new AbortController();
+    const abortTimeout = setTimeout(() => controller.abort(), 30000);
 
     try {
       const response = await fetch(
@@ -221,94 +454,45 @@ export default function ReportesWebScreen() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(registroEditar),
-        },
+          signal: controller.signal,
+        }
       );
 
       const data = await response.json();
-      clearInterval(interval);
+      limpiarTimersEdicion();
+
+      if (!isMountedRef.current) return;
 
       if (data.success) {
         setUploadProgress(100);
         setUploadStatus("¡Correcto!");
         setIsFinished(true);
 
-        setTimeout(() => {
-          setLoading(false);
+        timeoutRef.current = setTimeout(() => {
+          if (!isMountedRef.current) return;
+          setGuardandoEdicion(false);
           setRegistroEditar(null);
-          setFiltroPropietario("TODOS");
-          setPaginaActual(1);
-          fetchOcurrencias(1, registrosPorPagina);
-          fetchTotalMisRegistros(); 
-          fetchTotalSinRestriccion();
+          fetchContadores();
+          fetchOcurrencias(paginaActual, registrosPorPagina);
         }, 600);
       } else {
-        clearInterval(interval);
-        setLoading(false);
+        setGuardandoEdicion(false);
         alert("Error del servidor: " + (data.error || "No se pudo actualizar"));
       }
-    } catch (error) {
-      clearInterval(interval);
-      setLoading(false);
+    } catch (error: any) {
+      limpiarTimersEdicion();
+      if (!isMountedRef.current) return;
+      setGuardandoEdicion(false);
       console.error("Error de conexión:", error);
-      alert("No se pudo conectar con el servidor. Verifica la IP.");
+      alert(
+        error?.name === "AbortError"
+          ? "El servidor tardó demasiado en responder."
+          : "No se pudo conectar con el servidor."
+      );
+    } finally {
+      clearTimeout(abortTimeout);
     }
   };
-
-  const textoPeriodo = useMemo(() => {
-    if (!fechasFiltro?.inicio || !fechasFiltro?.fin) {
-      return "Últimas 12 horas";
-    }
-    const fechaInicioLimpia = fechasFiltro.inicio.split(" ")[0];
-    const fechaFinLimpia = fechasFiltro.fin.split(" ")[0];
-
-    if (fechaInicioLimpia === fechaFinLimpia) {
-      return `Fecha: ${fechaInicioLimpia}`;
-    }
-    return `Periodo seleccionado`;
-  }, [fechasFiltro]);
-
-  const fetchOcurrencias = useCallback(
-    async (page: number = paginaActual, limit: number = registrosPorPagina) => {
-      setLoading(true);
-
-      try {
-        let url = `${API_URL}/ocurrencias/listar/tablasipcop-rango12h?page=${page}&limit=${limit}`;
-
-        if (filtroPropietario === "MIOS" && userData?.id) {
-          url += `&id_usuario=${encodeURIComponent(userData.id)}`;
-        } else {
-          // Si el Reporte de Servicio está encendido, filtramos SOLO 139 y 140. Si está apagado, excluimos 139 y 140 por defecto en TODOS.
-          if (reporteServicioActivo) {
-            url += `&filtro_modalidad=SOLO_139_140`;
-          } else {
-            url += `&filtro_modalidad=EXCLUIR_139_140`;
-          }
-        }
-
-        const response = await fetch(url);
-        const json = await response.json();
-
-        if (json && json.success && Array.isArray(json.data)) {
-          setReportesCompletos(json.data);
-          setTotalRegistrosBD(json.total || 0);
-        } else {
-          setReportesCompletos([]);
-          setTotalRegistrosBD(0);
-        }
-      } catch (error) {
-        console.error("Error al obtener datos operativos:", error);
-        setReportesCompletos([]);
-        setTotalRegistrosBD(0);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [paginaActual, registrosPorPagina, filtroPropietario, reporteServicioActivo, userData]
-  );
-
-  useEffect(() => {
-    fetchOcurrencias(paginaActual, registrosPorPagina);
-  }, [paginaActual, registrosPorPagina, filtroPropietario, reporteServicioActivo, fechasFiltro, fetchOcurrencias]);
 
   useEffect(() => {
     const estiloHover = document.createElement("style");
@@ -316,6 +500,15 @@ export default function ReportesWebScreen() {
       .fila-tabla-operativa:hover {
         background-color: #f1f5f9 !important;
         transition: background-color 0.15s ease-in-out;
+      }
+      .link-evidencia-foto:hover {
+        background-color: #e2e8f0 !important;
+      }
+      .link-evidencia-foto:hover + .tooltip-miniatura,
+      .tooltip-miniatura:hover,
+      .link-evidencia-edicion:hover + .tooltip-miniatura-edicion,
+      .tooltip-miniatura-edicion:hover {
+        display: block !important;
       }
     `;
     document.head.appendChild(estiloHover);
@@ -326,63 +519,112 @@ export default function ReportesWebScreen() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDetalleSeleccionado(null);
+      if (event.key === "Escape") {
+        if (modalConfirmacionOpen) {
+          setModalConfirmacionOpen(false);
+        } else if (registroEditar && !guardandoEdicion) {
+          setRegistroEditar(null);
+        } else {
+          setDetalleSeleccionado(null);
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    setPaginaActual(1);
-  }, [filtroPropietario, reporteServicioActivo]);
-
-  const reportesFiltrados = useMemo(() => {
-    return Array.isArray(reportesCompletos) ? reportesCompletos : [];
-  }, [reportesCompletos]);
+  }, [modalConfirmacionOpen, registroEditar, guardandoEdicion]);
 
   const totalPaginas = useMemo(() => {
     const paginas = Math.ceil(totalRegistrosBD / registrosPorPagina);
     return paginas > 0 ? paginas : 1;
   }, [totalRegistrosBD, registrosPorPagina]);
 
+  const hoyLocal = getHoyLocal();
+
   return (
     <div style={styles.container}>
       {/* Accesos Rápidos */}
       <div style={styles.grid}>
-        <button onClick={() => setModalInsertOpen("camara")} style={{ ...styles.card, backgroundColor: MJM_BLUE }}>
+        <button
+          onClick={() => setModalInsertOpen("camara")}
+          style={{ ...styles.card, backgroundColor: MJM_BLUE }}
+        >
           <Ionicons name="videocam" size={26} color="white" />
           <div style={styles.cardLab}>CÁMARA</div>
         </button>
-        <button onClick={() => setModalInsertOpen("telefono")} style={{ ...styles.card, backgroundColor: MJM_BLUE }}>
+        <button
+          onClick={() => setModalInsertOpen("telefono")}
+          style={{ ...styles.card, backgroundColor: MJM_BLUE }}
+        >
           <Ionicons name="call" size={26} color="white" />
           <div style={styles.cardLab}>TELÉFONO</div>
         </button>
-        <button onClick={() => setModalInsertOpen("boton")} style={{ ...styles.card, backgroundColor: MJM_BLUE }}>
+        <button
+          onClick={() => setModalInsertOpen("boton")}
+          style={{ ...styles.card, backgroundColor: MJM_BLUE }}
+        >
           <Ionicons name="alert-circle" size={26} color="white" />
           <div style={styles.cardLab}>BOTÓN DE PÁNICO</div>
         </button>
-        <button onClick={() => setModalInsertOpen("redes")} style={{ ...styles.card, backgroundColor: MJM_BLUE }}>
+        <button
+          onClick={() => setModalInsertOpen("redes")}
+          style={{ ...styles.card, backgroundColor: MJM_BLUE }}
+        >
           <Ionicons name="share-social" size={26} color="white" />
           <div style={styles.cardLab}>REDES SOCIALES</div>
         </button>
-        <button onClick={() => setModalInsertOpen("operador")} style={{ ...styles.card, backgroundColor: MJM_BLUE }}>
+        <button
+          onClick={() => setModalInsertOpen("operador")}
+          style={{ ...styles.card, backgroundColor: MJM_BLUE }}
+        >
           <Ionicons name="megaphone" size={26} color="white" />
           <div style={styles.cardLab}>RADIOPERADOR</div>
         </button>
 
-        <div style={{ ...styles.card, backgroundColor: MJM_BLUE, display: "flex", flexDirection: "row", padding: 0, overflow: "hidden" }}>
+        <div
+          style={{
+            ...styles.card,
+            backgroundColor: MJM_BLUE,
+            display: "flex",
+            flexDirection: "row",
+            padding: 0,
+            overflow: "hidden",
+          }}
+        >
           <button
             onClick={() => setModalInsertOpen("servicioIn")}
-            style={{ flex: 1, backgroundColor: "transparent", border: "none", color: "white", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "15px 10px", cursor: "pointer", borderRight: "1px solid rgba(255, 255, 255, 0.2)" }}
+            style={{
+              flex: 1,
+              backgroundColor: "transparent",
+              border: "none",
+              color: "white",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "15px 10px",
+              cursor: "pointer",
+              borderRight: "1px solid rgba(255, 255, 255, 0.2)",
+            }}
           >
             <Ionicons name="play-circle" size={24} color="white" />
             <div style={{ ...styles.cardLab, marginTop: 5 }}>INICIO SERVICIO</div>
           </button>
           <button
             onClick={() => setModalInsertOpen("servicioFi")}
-            style={{ flex: 1, backgroundColor: "transparent", border: "none", color: "white", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "15px 10px", cursor: "pointer" }}
+            style={{
+              flex: 1,
+              backgroundColor: "transparent",
+              border: "none",
+              color: "white",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "15px 10px",
+              cursor: "pointer",
+            }}
           >
-            <div style={{ ...styles.cardLab, marginTop: 5 }}>FIN SERVICIO</div>
+            <div style={{ ...styles.cardLab, marginTop: 5 }}>REPORTAR FALLAS / CIERRE</div>
           </button>
         </div>
       </div>
@@ -390,12 +632,10 @@ export default function ReportesWebScreen() {
       {/* Cabecera Principal */}
       <div style={styles.header}>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {/* Título principal con el total sin restricción */}
           <h2 style={{ color: MJM_BLUE, margin: 0, fontWeight: 700, fontSize: "22px" }}>
-            {textoPeriodo}: {totalSinRestriccionBD} registro(s) en total
+            Últimas 12 horas: {totalSinRestriccionBD} registro(s) en total
           </h2>
 
-          {/* BOTÓN INDEPENDIENTE DE REPORTE DE SERVICIO (PRENDER / APAGAR) */}
           {filtroPropietario === "TODOS" && (
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <button
@@ -410,7 +650,7 @@ export default function ReportesWebScreen() {
                   fontWeight: 700,
                   fontSize: "12px",
                   cursor: "pointer",
-                  backgroundColor: reporteServicioActivo ? "#024885" : "#e2e8f0", // Verde cuando está prendido, gris claro cuando está apagado
+                  backgroundColor: reporteServicioActivo ? MJM_BLUE : "#e2e8f0",
                   color: reporteServicioActivo ? "#ffffff" : "#475569",
                   display: "flex",
                   alignItems: "center",
@@ -418,10 +658,10 @@ export default function ReportesWebScreen() {
                   boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
                 }}
               >
-                <Ionicons 
-                  name={reporteServicioActivo ? "checkbox" : "square-outline"} 
-                  size={16} 
-                  color={reporteServicioActivo ? "#ffffff" : "#475569"} 
+                <Ionicons
+                  name={reporteServicioActivo ? "checkbox" : "square-outline"}
+                  size={16}
+                  color={reporteServicioActivo ? "#ffffff" : "#475569"}
                 />
                 Inicio / Fin Servicio
               </button>
@@ -429,32 +669,41 @@ export default function ReportesWebScreen() {
           )}
         </div>
 
-        {/* PESTAÑAS DE PROPIETARIO (TODOS / MIS REGISTROS) */}
+        {/* PESTAÑAS DE PROPIETARIO */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={styles.tabs}>
             <button
               onClick={() => {
                 fetchOcurrencias(paginaActual, registrosPorPagina);
-                fetchTotalSinRestriccion();
+                fetchContadores();
               }}
-              style={{ background: "transparent", border: "none", cursor: "pointer", padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center" }}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "0 8px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
               title="Actualizar tabla"
             >
-              <Ionicons name="reload" size={17} color="#024885" />
+              <Ionicons name="reload" size={17} color={MJM_BLUE} />
             </button>
-<button
+            <button
               onClick={() => {
                 setFiltroPropietario("TODOS");
                 setPaginaActual(1);
               }}
               style={{
-                padding: "4px 8px",          // <-- Reducido para que sea pequeño / minivista
+                padding: "4px 8px",
                 borderRadius: "4px",
                 border: "none",
                 fontWeight: 600,
-                fontSize: "11px",            // <-- Texto pequeño
+                fontSize: "11px",
                 cursor: "pointer",
-                backgroundColor: filtroPropietario === "TODOS" ? MJM_BLUE : "#e2e8f0",
+                backgroundColor:
+                  filtroPropietario === "TODOS" ? MJM_BLUE : "#e2e8f0",
                 color: filtroPropietario === "TODOS" ? "#ffffff" : "#475569",
               }}
             >
@@ -471,9 +720,10 @@ export default function ReportesWebScreen() {
                 borderRadius: "6px",
                 border: "none",
                 fontWeight: 600,
-                 fontSize: "11px",  
+                fontSize: "11px",
                 cursor: "pointer",
-                backgroundColor: filtroPropietario === "MIOS" ? MJM_BLUE : "#e2e8f0",
+                backgroundColor:
+                  filtroPropietario === "MIOS" ? MJM_BLUE : "#e2e8f0",
                 color: filtroPropietario === "MIOS" ? "#ffffff" : "#475569",
               }}
             >
@@ -486,7 +736,14 @@ export default function ReportesWebScreen() {
       {/* Tabla de Datos */}
       <div style={styles.tableCard}>
         <div style={styles.tableScrollContainer}>
-          <table style={{ ...styles.table, tableLayout: "fixed", width: "100%", borderCollapse: "collapse" }}>
+          <table
+            style={{
+              ...styles.table,
+              tableLayout: "fixed",
+              width: "100%",
+              borderCollapse: "collapse",
+            }}
+          >
             <thead>
               <tr style={styles.thead}>
                 <th style={{ ...styles.th, width: "4%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>N°</th>
@@ -497,7 +754,16 @@ export default function ReportesWebScreen() {
                 <th style={{ ...styles.th, width: "7%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>FECHA</th>
                 <th style={{ ...styles.th, width: "5%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>HORA</th>
                 <th style={{ ...styles.th, width: "19%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>UBICACIÓN</th>
-                <th style={{ ...styles.th, width: "3%", textAlign: "center", borderRight: filtroPropietario === "MIOS" ? "1px solid #cbd5e1" : "none" }}>FOTOS</th>
+                <th
+                  style={{
+                    ...styles.th,
+                    width: "4%",
+                    textAlign: "center",
+                    borderRight: filtroPropietario === "MIOS" ? "1px solid #cbd5e1" : "none",
+                  }}
+                >
+                  FOTOS
+                </th>
                 {filtroPropietario === "MIOS" && (
                   <th style={{ ...styles.th, width: "5%", textAlign: "center" }}>EDITAR</th>
                 )}
@@ -507,1584 +773,968 @@ export default function ReportesWebScreen() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={filtroPropietario === "MIOS" ? 10 : 9} style={{ textAlign: "center", padding: "40px", color: "#024885", backgroundColor: "#f8fafc" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontWeight: "600", fontSize: "15px" }}>
-                      <span>Cargando registros del periodo... Por favor espere.</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : reportesFiltrados.length === 0 ? (
-                <tr>
-                  <td colSpan={filtroPropietario === "MIOS" ? 10 : 9} style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>
-                    No se encontraron registros.
-                  </td>
-                </tr>
-              ) : (
-                reportesFiltrados.map((item) => (
-                  <tr
-                    key={item.id_ocurrencia}
-                    className="fila-tabla-operativa"
-                    style={styles.tr}
-                    onClick={() => setDetalleSeleccionado(item)}
+                  <td
+                    colSpan={filtroPropietario === "MIOS" ? 10 : 9}
+                    style={{
+                      textAlign: "center",
+                      padding: "40px",
+                      color: MJM_BLUE,
+                      backgroundColor: "#f8fafc",
+                    }}
                   >
-                    <td style={{ ...styles.td, textAlign: "center", verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
-                      <div style={{ ...styles.txtB }} title={String(item.id_ocurrencia)}>
-                        #{item.id_ocurrencia}
-                      </div>
-                    </td>
-
-                    <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
-                      <div style={styles.celdaTruncadaContainer}>
-                        <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }}>
-                          {item.fecha_reporte
-                            ? (() => {
-                                const fechaObj = new Date(item.fecha_reporte);
-                                const diaSemana = fechaObj.toLocaleDateString("es-PE", { weekday: "short" }).replace(".", "").toLowerCase();
-                                const fechaNumerica = fechaObj.toLocaleDateString("es-PE");
-                                const hora = fechaObj.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", hour12: false });
-                                return `${diaSemana} ${fechaNumerica} - ${hora}`;
-                              })()
-                            : item.fecha_evento || "S/F"}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
-                      <div style={styles.celdaTruncadaContainer}>
-                        <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }} title={item.persona_nombre_completo}>
-                          {item.persona_nombre_completo}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
-                      <div style={styles.celdaTruncadaContainer}>
-                        <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word", fontSize: "11px" }} title={item.tipo_patrullaje_nombre || "---"}>
-                          {item.tipo_patrullaje_nombre || "---"}
-                        </div>
-                        <div style={{ ...styles.txtS, color: "#024885", fontWeight: "600", whiteSpace: "normal", wordBreak: "break-word", fontSize: "13px" }} title={item.origen_descripcion}>
-                          {item.origen_descripcion}
-                        </div>
-                        <div style={{ ...styles.txtS, color: "#024885", fontWeight: "500", whiteSpace: "normal", wordBreak: "break-word" }} title={item.placa_con_tipo}>
-                          {item.vehiculos_json}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
-                      <div style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
-                        <span
-                          style={{
-                            ...styles.badge,
-                            display: "inline-block",
-                            maxWidth: "100%",
-                            whiteSpace: "normal",
-                            wordBreak: "break-word",
-                            backgroundColor: (() => {
-                              const mod = String(item.modalidad_nombre || "").toUpperCase();
-                              if (mod.includes("CUADERNO")) return "#dc2626";
-                              if (mod.includes("TÁCTICO")) return "#024885";
-                              if (mod.includes("PROTECCIÓN ESCOLAR")) return "#eab308";
-                              return "#f1f5f9";
-                            })(),
-                            color: (() => {
-                              const mod = String(item.modalidad_nombre || "").toUpperCase();
-                              if (mod.includes("PROTECCIÓN ESCOLAR")) return "#1e293b";
-                              if (!mod.includes("CUADERNO") && !mod.includes("TÁCTICO")) return "#37393b";
-                              return "white";
-                            })(),
-                            fontWeight: "700",
-                          }}
-                        >
-                          {item.modalidad_nombre}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td style={{ ...styles.td, borderRight: "1px solid #e2e8f0", textAlign: "center", backgroundColor: "#e8f5fd", borderLeft: "3px solid #024885" }}>
-                      <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word", fontWeight: "bold" }}>
-                        {formatearFechaConDia(item.fecha_evento)}
-                      </div>
-                    </td>
-
-                    <td style={{ ...styles.td, borderRight: "1px solid #e2e8f0", textAlign: "center", backgroundColor: "#e8f5fd", borderLeft: "3px solid #024885" }}>
-                      <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word", fontWeight: "bold" }}>
-                        {item.hora_llegada ? String(item.hora_llegada).slice(0, 5) : "S/H"}
-                      </div>
-                    </td>
-
-                    <td style={{ ...styles.td, borderRight: "1px solid #e2e8f0", backgroundColor: "#e8f5fd", borderLeft: "3px solid #024885" }}>
-                      <div style={styles.celdaTruncadaContainer}>
-                        <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }} title={item.label || item.via_nombre || "---"}>
-                          {item.nombre_lugar || "---"}
-                        </div>
-                        <div style={{ ...styles.txtS, whiteSpace: "normal", wordBreak: "break-word" }} title={item.referencia || "Sin referencia"}>
-                          Ref: {item.referencia || "Sin referencia"}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td style={{ ...styles.td, textAlign: "center", borderLeft: "3px solid #024885", verticalAlign: "top", borderRight: filtroPropietario === "MIOS" ? "1px solid #e2e8f0" : "none" }}>
-                      {(() => {
-                        let total = 0;
-                        if (item.fotos_json) {
-                          try {
-                            const parsed = typeof item.fotos_json === "string" ? JSON.parse(item.fotos_json) : item.fotos_json;
-                            if (Array.isArray(parsed)) {
-                              total = parsed.filter((f) => f && f !== "null").length;
-                            }
-                          } catch (e) { total = 0; }
-                        } else {
-                          total = Number(item.total_fotos || 0);
-                        }
-
-                        return total > 0 ? (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", backgroundColor: "#e0f2fe", color: "#0369a1", padding: "3px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: "700" }}>
-                            📷 {total}
-                          </span>
-                        ) : (
-                          <span style={{ color: "#94a3b8", fontSize: "12px" }}>0</span>
-                        );
-                      })()}
-                    </td>
-
-                    {filtroPropietario === "MIOS" && (
-                      <td style={{ ...styles.td, textAlign: "center", verticalAlign: "top" }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRegistroEditar(item);
-                            fetchLugares("default");
-                          }}
-                          style={{
-                            background: "#f8fafc",
-                            border: "1px solid #cbd5e1",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            padding: "5px 10px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                          }}
-                          title="Editar registro"
-                        >
-                          <Ionicons name="pencil" size={15} color="#024885" />
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-
-          
-                  </div>
-          
-                  {/* CONTENEDOR DE PAGINACIÓN COMPLETO CON SELECTOR DE FILAS */}
-                  <div style={styles.tableFooterPagination}>
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: "8px",
-                        marginRight: "auto",
+                        justifyContent: "center",
+                        gap: "10px",
+                        fontWeight: "600",
+                        fontSize: "15px",
                       }}
                     >
-                      <span
-                        style={{ fontSize: "12px", color: "#475569", fontWeight: "600" }}
-                      >
-                        Mostrar:
-                      </span>
-                   <select 
-            value={registrosPorPagina} 
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              // Seguridad extra: si excede 50, forzar 50
-              setRegistrosPorPagina(val > 50 ? 50 : val);
-              setPaginaActual(1); // Reiniciar a la página 1 al cambiar el límite
-            }}
-            style={{ padding: 6, borderRadius: 6, backgroundColor: '#fff' }}
-          >
-            <option value={10}>10 </option>
-            <option value={25}>25 </option>
-            <option value={50}>50</option>
-          </select>
+                      <span>Cargando registros del periodo... Por favor espere.</span>
                     </div>
-          
-                    <div style={styles.paginationFlex}>
-                      <button
-                        disabled={paginaActual === 1}
-                        onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))}
-                        style={styles.btnPageNew}
-                      >
-                        <Ionicons
-                          name="chevron-back"
-                          size={15}
-                          color={paginaActual === 1 ? "#cbd5e1" : "#334155"}
-                        />
-                      </button>
-          
-                      <div style={styles.pageInfoWrapper}>
-                        Página {paginaActual} de {totalPaginas}
-                      </div>
-          
-                      <button
-                        disabled={paginaActual >= totalPaginas}
-                        onClick={() =>
-                          setPaginaActual((p) => Math.min(p + 1, totalPaginas))
-                        }
-                        style={styles.btnPageNew}
-                      >
-                        <Ionicons
-                          name="chevron-forward"
-                          size={15}
-                          color={paginaActual >= totalPaginas ? "#cbd5e1" : "#334155"}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-          
-                {/* MODAL DETALLE DE REGISTRO ACTIVO */}
-                 {detalleSeleccionado && (
-                  <div
-                    style={styles.overlay}
-                    onClick={() => setDetalleSeleccionado(null)}
+                  </td>
+                </tr>
+              ) : reportesCompletos.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={filtroPropietario === "MIOS" ? 10 : 9}
+                    style={{ textAlign: "center", padding: "30px", color: "#64748b" }}
                   >
-                    <div style={styles.modalDetail} onClick={(e) => e.stopPropagation()}>
-                      {/* HEADER */}
-                      <div style={styles.modalHeader}>
-                        <h3 style={{ margin: 0, color: "#024885", fontWeight: 700 }}>
-                          N° de Ocurrencia:{" "}
-                          {detalleSeleccionado.codigo_seguimiento
-                            ? `${detalleSeleccionado.codigo_seguimiento}-SGS-GSC`
-                            : "---"}
-                        </h3>
-                        <button
-                          onClick={() => setDetalleSeleccionado(null)}
-                          style={styles.btnClose}
-                        >
-                          ✕
-                        </button>
-                      </div>
-          
-                      {/* BODY CON SCROLL */}
-                      <div style={styles.modalBodyScrollable}>
-                        {/* CONTENEDOR GRID PRINCIPAL DE 2 COLUMNAS */}
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: "12px",
-                          }}
-                        >
-                          {/* 1. DATOS GENERALES */}
-                          <div
-                            style={{
-                              gridColumn: "span 2",
-                              marginTop: "4px",
-                              padding: "12px",
-                              backgroundColor: "#f8fafc",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: "8px",
-                            }}
-                          >
-                            <strong
-                              style={{
-                                color: "#024885",
-                                fontSize: "13px",
-                                display: "block",
-                                marginBottom: "10px",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  ...styles.infoValue,
-                                  fontWeight: "700",
-                                  color: "#024885",
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  maxWidth: "100%",
-                                  display: "inline-block",
-                                  verticalAlign: "bottom",
-                                }}
-                                title={detalleSeleccionado.modalidad_nombre || "---"}
-                              >
-                                {detalleSeleccionado.modalidad_nombre || "---"}
-                              </span>
-                            </strong>
-                            <div style={styles.infoRowGrid}>
-                              <span style={styles.infoLabel}>Datos Personales:</span>
-                              <span style={styles.infoValue}>
-                                {detalleSeleccionado.persona_nombre_completo || "---"} 
-                             
-                              </span>
-                            </div>
-                            <div style={styles.infoRowGrid}>
-                              <span style={styles.infoLabel}>Origen:</span>
-                              <span style={styles.infoValue}>
-                                {detalleSeleccionado.origen_descripcion || "---"} ({" "}
-                                {detalleSeleccionado.tipo_patrullaje_nombre || "---"})
-                              </span>
-                            </div>
-                           
-                            <div style={styles.infoRowGrid}>
-                              <span style={styles.infoLabel}>Unidad Vehicular:</span>
-                              <span style={styles.infoValue}>
-                                {detalleSeleccionado.vehiculos_json ||
-                                  "---"}
-                              </span>
-                            </div>
-                            <div style={styles.infoRowGrid}>
-                              <span style={styles.infoLabel}>Personal PNP:</span>
-                              <span style={styles.infoValue}>
-                                {detalleSeleccionado.pnp_nombre_completo ||
-                              
-                                  "---"}
-                              </span>
-                            </div>
-          <div style={styles.infoRowGrid}>
-            <span style={styles.infoLabel}>Cámara(s):</span>
-            <span style={styles.infoValue}>
-              {Array.isArray(detalleSeleccionado.camaras_json) && detalleSeleccionado.camaras_json.length > 0 ? (
-                <ol style={{ margin: 0, paddingLeft: '20px' }}>
-                  {detalleSeleccionado.camaras_json.map((camara, index) => (
-                    <li key={index}>{camara}</li>
-                  ))}
-                </ol>
+                    No se encontraron registros.
+                  </td>
+                </tr>
               ) : (
-                <span>---</span>
-              )}
-            </span>
-          </div>
-                          </div>
-          
-                          {/* 2. UBICACIÓN Y TEMPORALIDAD */}
-                          <div
-                            style={{
-                              padding: "12px",
-                              backgroundColor: "#f8fafc",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: "8px",
-                            }}
-                          >
-                            <strong
-                              style={{
-                                color: "#024885",
-                                fontSize: "13px",
-                                display: "block",
-                                marginBottom: "10px",
-                              }}
-                            >
-                              Ubicación y temporalidad:
-                            </strong>
-          
-                            <div style={styles.infoRowGrid}>
-                              <span style={styles.infoLabel}>Fecha Evento:</span>
-                           <span style={styles.infoValue}>
-            {detalleSeleccionado.fecha_evento
-              ? formatearFechaConDia(detalleSeleccionado.fecha_evento)
-              : "S/F"}
-          </span>
-                            </div>
-          
-                            <div style={{ ...styles.infoRowGrid, display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-            <div style={{ textAlign: 'center', flex: 1 }}>
-                  <span style={styles.infoLabel}>Hora Alerta:</span>
-              <div style={styles.infoValue}>
-                {detalleSeleccionado.hora_alerta
-                  ? String(detalleSeleccionado.hora_alerta).substring(0, 5)
-                  : "S/H"}
-              </div>
-            </div>
-          
-            <div style={{ textAlign: 'center', flex: 1, borderLeft: '1px solid #eee', borderRight: '1px solid #eee' }}>
-                   <span style={styles.infoLabel}>Hora Llegada:</span>
-              <div style={styles.infoValue}>
-                {detalleSeleccionado.hora_llegada
-                  ? String(detalleSeleccionado.hora_llegada).substring(0, 5)
-                  : "S/H"}
-              </div>
-            </div>
-          
-            <div style={{ textAlign: 'center', flex: 1 }}>
-                  <span style={styles.infoLabel}>Hora Repliegue:</span>
-              <div style={styles.infoValue}>
-                {detalleSeleccionado.hora_repliegue
-                  ? String(detalleSeleccionado.hora_repliegue).substring(0, 5)
-                  : "S/H"}
-              </div>
-            </div>
-          </div>
-          
-                            <div style={styles.infoRowGrid}>
-                              <span style={styles.infoLabel}>Ubicación:</span>
-                              <span style={styles.infoValue}>
-                                {detalleSeleccionado.nombre_lugar || "---"}
-                                <span style={{ color: "#64748b", fontSize: "12px" }}>
-                                  {" "}
-                                  (Ref:{" "}
-                                  {detalleSeleccionado.referencia || "Sin referencia"})
-                                </span>
-                              </span>
-                            </div>
-                          </div>
-          
-                          {/* 3. SIPCOP (Clasificación) */}
-                          <div
-                            style={{
-                              padding: "12px",
-                              backgroundColor: "#f8fafc",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: "8px",
-                            }}
-                          >
-                            <strong
-                              style={{
-                                color: "#024885",
-                                fontSize: "13px",
-                                display: "block",
-                                marginBottom: "10px",
-                              }}
-                            >
-                             Contacto y derivación:
-                            </strong>
-           <div style={styles.infoRowGrid}>
-                                <span style={styles.infoLabel}>Contribuyente:</span>
-                                <span style={styles.infoValue}>
-                                  {detalleSeleccionado.nombre_informante || "-"} -{" "}
-                                  {detalleSeleccionado.numero_telefono}
-                                </span>
-                              </div>
-                            <div style={styles.infoRowGrid}>
-                                <span style={styles.infoLabel}>Derivado:</span>
-                                <span style={styles.infoValue}>
-                                  {detalleSeleccionado.unidad_encargada || "S/H"}
-                                </span>
-                              </div>
-                          
-                          
-                          </div>
-          
-                      
-          
-                       
+                reportesCompletos.map((item) => {
+                  const vehiculosTexto = Array.isArray(item.vehiculos)
+                    ? item.vehiculos.join(", ")
+                    : item.placa_con_tipo || "";
+
+                  return (
+                    <tr
+                      key={item.id_ocurrencia}
+                      className="fila-tabla-operativa"
+                      style={styles.tr}
+                      onClick={() => setDetalleSeleccionado(item)}
+                    >
+                      <td style={{ ...styles.td, textAlign: "center", verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
+                        <div style={styles.txtB} title={String(item.id_ocurrencia)}>
+                          #{item.id_ocurrencia}
                         </div>
-           {/* EVIDENCIAS FOTOGRÁFICAS */}
-               {(() => {
-            let fotosArray: any[] = [];
-            try {
-              const itemData = detalleSeleccionado as any;
-              const fotosVal = itemData.fotos_json || itemData.lista_fotos || itemData.fotos;
-              
-              if (fotosVal) {
-                // Si viene como string, lo parseamos; si ya es array, lo usamos
-                const parsed = typeof fotosVal === "string" ? JSON.parse(fotosVal) : fotosVal;
-                
-                if (Array.isArray(parsed)) {
-                  // Aplanamos por si viene un array dentro de otro array y limpiamos cada ruta
-                  fotosArray = parsed.flat(Infinity)
-                                    .map(f => typeof f === "string" ? f.replace(/[\[\]'"]+/g, "").trim() : f)
-                                    .filter((f) => f && f !== "null" && f !== "");
-                }
-              } 
-              
-              if (fotosArray.length === 0 && itemData.foto_principal) {
-                fotosArray = [String(itemData.foto_principal).replace(/[\[\]'"]+/g, "").trim()];
-              }
-            } catch (e) {
-              fotosArray = [];
-            }
-          
-            if (Array.isArray(fotosArray) && fotosArray.length > 0) {
-              return (
-                <div style={{ marginTop: "16px" }}>
-                  <strong style={styles.sectionTitle}>
-                    Evidencias Adjuntas ({fotosArray.length}):
-                  </strong>
-          
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "8px",
-                      marginTop: "8px",
-                    }}
-                  >
-                    {fotosArray.map((foto: any, idx: number) => {
-                      const urlFotoFinal = obtenerUrlFoto(foto);
-          
-                      return (
-                        <div
-                          key={idx}
-                          style={{
-                            position: "relative",
-                            display: "inline-block",
-                          }}
-                        >
-                          {/* Enlace que al hacer clic abre la foto original completa en Cloudflare R2 */}
-                          <a
-                            href={urlFotoFinal}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                      </td>
+
+                      <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
+                        <div style={styles.celdaTruncadaContainer}>
+                          <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }}>
+                            {formatearFechaRegistro(item.fecha_reporte, item.fecha_evento)}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
+                        <div style={styles.celdaTruncadaContainer}>
+                          <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }} title={item.persona_nombre_completo}>
+                            {item.persona_nombre_completo}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
+                        <div style={styles.celdaTruncadaContainer}>
+                          <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word", fontSize: "11px" }} title={item.tipo_patrullaje_nombre || "---"}>
+                            {item.tipo_patrullaje_nombre || "---"}
+                          </div>
+                          <div style={{ ...styles.txtS, color: MJM_BLUE, fontWeight: "600", whiteSpace: "normal", wordBreak: "break-word", fontSize: "13px" }} title={item.origen_descripcion}>
+                            {item.origen_descripcion}
+                          </div>
+                          {vehiculosTexto && vehiculosTexto !== "Sin dato" ? (
+                            <div style={{ ...styles.txtS, color: MJM_BLUE, fontWeight: "500", whiteSpace: "normal", wordBreak: "break-word" }} title={vehiculosTexto}>
+                              {vehiculosTexto}
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+
+                      <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
+                        <div style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
+                          <span
                             style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              padding: "6px 12px",
-                              backgroundColor: "#f1f5f9",
+                              ...styles.badge,
+                              display: "inline-block",
+                              maxWidth: "100%",
+                              whiteSpace: "normal",
+                              wordBreak: "break-word",
+                              backgroundColor: (() => {
+                                const mod = String(item.modalidad_nombre || "").toUpperCase();
+                                if (mod.includes("CUADERNO")) return "#dc2626";
+                                if (mod.includes("TÁCTICO")) return MJM_BLUE;
+                                if (mod.includes("PROTECCIÓN ESCOLAR")) return "#eab308";
+                                return "#f1f5f9";
+                              })(),
+                              color: (() => {
+                                const mod = String(item.modalidad_nombre || "").toUpperCase();
+                                if (mod.includes("PROTECCIÓN ESCOLAR")) return "#1e293b";
+                                if (!mod.includes("CUADERNO") && !mod.includes("TÁCTICO")) return "#37393b";
+                                return "white";
+                              })(),
+                              fontWeight: "700",
+                            }}
+                          >
+                            {item.modalidad_nombre}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td style={{ ...styles.td, borderRight: "1px solid #e2e8f0", textAlign: "center", backgroundColor: "#e8f5fd", borderLeft: `3px solid ${MJM_BLUE}` }}>
+                        <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word", fontWeight: "bold" }}>
+                          {formatearFechaConDia(item.fecha_evento)}
+                        </div>
+                      </td>
+
+                      <td style={{ ...styles.td, borderRight: "1px solid #e2e8f0", textAlign: "center", backgroundColor: "#e8f5fd", borderLeft: `3px solid ${MJM_BLUE}` }}>
+                        <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word", fontWeight: "bold" }}>
+                          {item.hora_llegada ? String(item.hora_llegada).slice(0, 5) : "S/H"}
+                        </div>
+                      </td>
+
+                      <td style={{ ...styles.td, borderRight: "1px solid #e2e8f0", backgroundColor: "#e8f5fd", borderLeft: `3px solid ${MJM_BLUE}` }}>
+                        <div style={styles.celdaTruncadaContainer}>
+                          <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }} title={item.label || item.via_nombre || "---"}>
+                            {item.nombre_lugar || "---"}
+                          </div>
+                          <div style={{ ...styles.txtS, whiteSpace: "normal", wordBreak: "break-word" }} title={item.referencia || "Sin referencia"}>
+                            Ref: {item.referencia || "Sin referencia"}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td
+                        style={{
+                          ...styles.td,
+                          textAlign: "center",
+                          borderLeft: `3px solid ${MJM_BLUE}`,
+                          verticalAlign: "top",
+                          borderRight: filtroPropietario === "MIOS" ? "1px solid #e2e8f0" : "none",
+                        }}
+                      >
+                        {(() => {
+                          const total = Array.isArray(item.fotos)
+                            ? item.fotos.filter((f) => f && f !== "null").length
+                            : Number(item.total_fotos || 0);
+
+                          return total > 0 ? (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                backgroundColor: "#e0f2fe",
+                                color: "#0369a1",
+                                padding: "3px 8px",
+                                borderRadius: "12px",
+                                fontSize: "11px",
+                                fontWeight: "700",
+                              }}
+                            >
+                              📷 {total}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: "12px" }}>0</span>
+                          );
+                        })()}
+                      </td>
+
+                      {filtroPropietario === "MIOS" && (
+                        <td style={{ ...styles.td, textAlign: "center", verticalAlign: "top" }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRegistroEditar({
+                                ...item,
+                                lista_fotos: item.lista_fotos || item.fotos || [],
+                              });
+                              fetchLugares("default");
+                            }}
+                            style={{
+                              background: "#f8fafc",
                               border: "1px solid #cbd5e1",
                               borderRadius: "6px",
-                              color: "#024885",
-                              fontSize: "12px",
-                              fontWeight: "600",
-                              textDecoration: "none",
                               cursor: "pointer",
+                              padding: "5px 10px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
                             }}
-                            className="link-evidencia-foto"
+                            title="Editar registro"
                           >
-                            <span>📷 Ver Foto {idx + 1}</span>
+                            <Ionicons name="pencil" size={15} color={MJM_BLUE} />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* PAGINACIÓN */}
+        <div style={styles.tableFooterPagination}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginRight: "auto" }}>
+            <span style={{ fontSize: "12px", color: "#475569", fontWeight: "600" }}>
+              Mostrar:
+            </span>
+            <select
+              value={registrosPorPagina}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setRegistrosPorPagina(val > 50 ? 50 : val);
+                setPaginaActual(1);
+              }}
+              style={{ padding: 6, borderRadius: 6, backgroundColor: "#fff" }}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
+
+          <div style={styles.paginationFlex}>
+            <button
+              disabled={paginaActual === 1}
+              onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))}
+              style={styles.btnPageNew}
+            >
+              <Ionicons
+                name="chevron-back"
+                size={15}
+                color={paginaActual === 1 ? "#cbd5e1" : "#334155"}
+              />
+            </button>
+
+            <div style={styles.pageInfoWrapper}>
+              Página {paginaActual} de {totalPaginas}
+            </div>
+
+            <button
+              disabled={paginaActual >= totalPaginas}
+              onClick={() => setPaginaActual((p) => Math.min(p + 1, totalPaginas))}
+              style={styles.btnPageNew}
+            >
+              <Ionicons
+                name="chevron-forward"
+                size={15}
+                color={paginaActual >= totalPaginas ? "#cbd5e1" : "#334155"}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* MODAL DETALLE */}
+      {detalleSeleccionado && (
+        <div style={styles.overlay} onClick={() => setDetalleSeleccionado(null)}>
+          <div style={styles.modalDetail} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={{ margin: 0, color: MJM_BLUE, fontWeight: 700 }}>
+                N° de Ocurrencia:{" "}
+                {detalleSeleccionado.codigo_seguimiento
+                  ? `${detalleSeleccionado.codigo_seguimiento}-SGS-GSC`
+                  : "---"}
+              </h3>
+              <button onClick={() => setDetalleSeleccionado(null)} style={styles.btnClose}>
+                ✕
+              </button>
+            </div>
+
+            <div style={styles.modalBodyScrollable}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div
+                  style={{
+                    gridColumn: "span 2",
+                    marginTop: "4px",
+                    padding: "12px",
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <strong style={{ color: MJM_BLUE, fontSize: "13px", display: "block", marginBottom: "10px" }}>
+                    <span
+                      style={{
+                        ...styles.infoValue,
+                        fontWeight: "700",
+                        color: MJM_BLUE,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        maxWidth: "100%",
+                        display: "inline-block",
+                      }}
+                      title={detalleSeleccionado.modalidad_nombre || "---"}
+                    >
+                      {detalleSeleccionado.modalidad_nombre || "---"}
+                    </span>
+                  </strong>
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Datos Personales:</span>
+                    <span style={styles.infoValue}>
+                      {detalleSeleccionado.persona_nombre_completo || "---"}
+                    </span>
+                  </div>
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Origen:</span>
+                    <span style={styles.infoValue}>
+                      {detalleSeleccionado.origen_descripcion || "---"} ({" "}
+                      {detalleSeleccionado.tipo_patrullaje_nombre || "---"})
+                    </span>
+                  </div>
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Unidad Vehicular:</span>
+                    <span style={styles.infoValue}>
+                      {Array.isArray(detalleSeleccionado.vehiculos)
+                        ? detalleSeleccionado.vehiculos.join(", ") || "---"
+                        : detalleSeleccionado.placa_con_tipo || "---"}
+                    </span>
+                  </div>
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Personal PNP:</span>
+                    <span style={styles.infoValue}>
+                      {detalleSeleccionado.pnp_nombre_completo || "---"}
+                    </span>
+                  </div>
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Cámara(s):</span>
+                    <span style={styles.infoValue}>
+                      {Array.isArray(detalleSeleccionado.camaras) &&
+                      detalleSeleccionado.camaras.length > 0 ? (
+                        <ol style={{ margin: 0, paddingLeft: "20px" }}>
+                          {detalleSeleccionado.camaras.map((camara, index) => (
+                            <li key={index}>{camara}</li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <span>---</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ padding: "12px", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+                  <strong style={{ color: MJM_BLUE, fontSize: "13px", display: "block", marginBottom: "10px" }}>
+                    Ubicación y temporalidad:
+                  </strong>
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Fecha Evento:</span>
+                    <span style={styles.infoValue}>
+                      {detalleSeleccionado.fecha_evento
+                        ? formatearFechaConDia(detalleSeleccionado.fecha_evento)
+                        : "S/F"}
+                    </span>
+                  </div>
+
+                  <div style={{ ...styles.infoRowGrid, display: "flex", justifyContent: "space-between", width: "100%" }}>
+                    <div style={{ textAlign: "center", flex: 1 }}>
+                      <span style={styles.infoLabel}>Hora Alerta:</span>
+                      <div style={styles.infoValue}>
+                        {detalleSeleccionado.hora_alerta
+                          ? String(detalleSeleccionado.hora_alerta).substring(0, 5)
+                          : "S/H"}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "center", flex: 1, borderLeft: "1px solid #eee", borderRight: "1px solid #eee" }}>
+                      <span style={styles.infoLabel}>Hora Llegada:</span>
+                      <div style={styles.infoValue}>
+                        {detalleSeleccionado.hora_llegada
+                          ? String(detalleSeleccionado.hora_llegada).substring(0, 5)
+                          : "S/H"}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "center", flex: 1 }}>
+                      <span style={styles.infoLabel}>Hora Repliegue:</span>
+                      <div style={styles.infoValue}>
+                        {detalleSeleccionado.hora_repliegue
+                          ? String(detalleSeleccionado.hora_repliegue).substring(0, 5)
+                          : "S/H"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Ubicación:</span>
+                    <span style={styles.infoValue}>
+                      {detalleSeleccionado.nombre_lugar || "---"}
+                      <span style={{ color: "#64748b", fontSize: "12px" }}>
+                        {" "}
+                        (Ref: {detalleSeleccionado.referencia || "Sin referencia"})
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ padding: "12px", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+                  <strong style={{ color: MJM_BLUE, fontSize: "13px", display: "block", marginBottom: "10px" }}>
+                    Contacto y derivación:
+                  </strong>
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Contribuyente:</span>
+                    <span style={styles.infoValue}>
+                      {detalleSeleccionado.nombre_informante || "-"} -{" "}
+                      {detalleSeleccionado.numero_telefono}
+                    </span>
+                  </div>
+                  <div style={styles.infoRowGrid}>
+                    <span style={styles.infoLabel}>Derivado:</span>
+                    <span style={styles.infoValue}>
+                      {detalleSeleccionado.unidad_encargada || "S/H"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* EVIDENCIAS */}
+              {(() => {
+                const fotosArray = (
+                  detalleSeleccionado.lista_fotos ||
+                  detalleSeleccionado.fotos ||
+                  []
+                ).filter((f) => f && f !== "null");
+
+                if (fotosArray.length === 0) return null;
+
+                return (
+                  <div style={{ marginTop: "16px" }}>
+                    <strong style={styles.sectionTitle}>
+                      Evidencias Adjuntas ({fotosArray.length}):
+                    </strong>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+                      {fotosArray.map((foto: any, idx: number) => {
+                        const urlFotoFinal = obtenerUrlFoto(foto);
+                        return (
+                          <div key={idx} style={{ position: "relative", display: "inline-block" }}>
+                            <a
+                              href={urlFotoFinal}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                padding: "6px 12px",
+                                backgroundColor: "#f1f5f9",
+                                border: "1px solid #cbd5e1",
+                                borderRadius: "6px",
+                                color: MJM_BLUE,
+                                fontSize: "12px",
+                                fontWeight: "600",
+                                textDecoration: "none",
+                                cursor: "pointer",
+                              }}
+                              className="link-evidencia-foto"
+                            >
+                              <span>📷 Ver Foto {idx + 1}</span>
+                            </a>
+
+                            <div
+                              className="tooltip-miniatura"
+                              style={{
+                                display: "none",
+                                position: "absolute",
+                                bottom: "105%",
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                                padding: "4px",
+                                background: "#fff",
+                                border: "1px solid #cbd5e1",
+                                borderRadius: "6px",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                zIndex: 100,
+                                width: "130px",
+                                height: "130px",
+                              }}
+                            >
+                              <img
+                                src={urlFotoFinal}
+                                style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "4px" }}
+                                alt={`Preview ${idx + 1}`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div style={{ marginTop: "16px" }}>
+                <strong style={styles.sectionTitle}>Descripción / Suceso:</strong>
+                <div
+                  style={{
+                    ...styles.descBox,
+                    width: "100%",
+                    padding: "12px",
+                    fontSize: "13px",
+                    color: "#1e293b",
+                    boxSizing: "border-box",
+                    whiteSpace: "pre-line",
+                  }}
+                >
+                  {detalleSeleccionado.ocurrencia_descripcion ||
+                    "Sin descripción detallada."}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDICIÓN */}
+      {registroEditar && (
+        <div
+          style={styles.overlay}
+          onClick={() => {
+            if (!guardandoEdicion) setRegistroEditar(null);
+          }}
+        >
+          <div
+            key={registroEditar.id_ocurrencia}
+            style={{
+              ...styles.modalDetail,
+              maxWidth: "1260px",
+              width: "95%",
+              height: "78vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", gap: "15px", flex: 1, overflow: "hidden", padding: "12px" }}>
+              {/* COLUMNA 1 */}
+              <div style={{ flex: 1, minWidth: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ padding: "12px", backgroundColor: "#f8fafc", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: MJM_BLUE,
+                      fontWeight: "700",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                    title={registroEditar.modalidad_nombre ?? ""}
+                  >
+                    {registroEditar.modalidad_nombre ?? ""}
+                  </div>
+                </div>
+
+                {[
+                  { label: "N° de Ocurrencia:", value: `${registroEditar.codigo_seguimiento ?? ""}-SGS-GSC` },
+                  { label: "Apellidos y Nombres:", value: `${registroEditar.persona_nombre_completo ?? ""} - ${registroEditar.persona_dni ?? ""}` },
+                  { label: "Origen:", value: `${registroEditar.origen_descripcion ?? ""}` },
+                  { label: "Tipo Patrullaje:", value: `${registroEditar.tipo_patrullaje_nombre ?? ""}` },
+                  {
+                    label: "Unidad:",
+                    value: Array.isArray(registroEditar.vehiculos)
+                      ? registroEditar.vehiculos.join(", ") || "---"
+                      : registroEditar.placa_con_tipo ?? "",
+                  },
+                  { label: "Efectivo PNP:", value: `${registroEditar.pnp_nombre_completo ?? ""}` },
+                ].map((item, idx) => (
+                  <div key={idx} style={{ padding: "12px", border: "1px solid #e2e8f0", borderRadius: "4px", backgroundColor: "#f8fafc" }}>
+                    <div style={{ fontSize: "12px", color: "#64748b" }}>{item.label}</div>
+                    <div style={{ fontSize: "13px", fontWeight: "600", wordBreak: "break-word" }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* COLUMNA 2 */}
+              <div style={{ flex: 1, minWidth: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ padding: "12px", border: "1px solid #e2e8f0", borderRadius: "4px", backgroundColor: "#fff" }}>
+                  <div style={{ fontSize: "12px", color: MJM_BLUE, marginBottom: "4px", fontWeight: "bold" }}>
+                    FECHA DEL EVENTO
+                  </div>
+                  <input
+                    type="date"
+                    max={hoyLocal}
+                    value={registroEditar.fecha_evento ? registroEditar.fecha_evento.split("T")[0] : ""}
+                    onChange={(e) => {
+                      const fechaSeleccionada = e.target.value;
+                      if (fechaSeleccionada > hoyLocal) {
+                        alert("No puedes seleccionar una fecha posterior al día de hoy.");
+                        return;
+                      }
+                      setRegistroEditar((prev) =>
+                        prev ? { ...prev, fecha_evento: fechaSeleccionada } : null
+                      );
+                    }}
+                    style={{ width: "100%", padding: "8px", border: "1px solid #cbd5e1", borderRadius: "4px", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {(["hora_alerta", "hora_llegada", "hora_repliegue"] as const).map((campo) => (
+                    <div key={campo} style={{ padding: "10px", border: "1px solid #e2e8f0", borderRadius: "4px", backgroundColor: "#fff" }}>
+                      <div style={{ fontSize: "11px", color: MJM_BLUE, marginBottom: "4px", fontWeight: "bold" }}>
+                        {campo.replace("_", " ").toUpperCase()}
+                      </div>
+                      <input
+                        type="time"
+                        style={{ border: "1px solid #cbd5e1", borderRadius: "4px", padding: "4px", width: "100%", boxSizing: "border-box" }}
+                        value={String(registroEditar[campo] ?? "").slice(0, 5)}
+                        onChange={(e) =>
+                          setRegistroEditar((prev) =>
+                            prev ? { ...prev, [campo]: e.target.value } : null
+                          )
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {horasEdicionInvalidas && (
+                  <div
+                    style={{
+                      backgroundColor: "#FFF5F5",
+                      borderLeft: "4px solid #D32F2F",
+                      padding: "12px",
+                      borderRadius: "4px",
+                      border: "1px solid #f5c6cb",
+                    }}
+                  >
+                    <div style={{ color: "#D32F2F", fontSize: "12px", fontWeight: "bold" }}>
+                      Error en secuencia o rango de tiempo
+                    </div>
+                    <div style={{ color: "#555", fontSize: "11px", marginTop: "2px" }}>
+                      Secuencia: Alerta ➔ Llegada ➔ Repliegue (máximo 12 horas en total).
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ padding: "12px", border: "1px solid #e2e8f0", borderRadius: "4px", backgroundColor: "#fff", flex: 1, display: "flex", flexDirection: "column" }}>
+                  <div style={{ fontSize: "12px", color: MJM_BLUE, marginBottom: "4px", fontWeight: "bold" }}>
+                    DIRECCIÓN
+                  </div>
+                  <div style={{ position: "relative", width: "100%", marginBottom: "8px" }}>
+                    <input
+                      type="text"
+                      placeholder="Haga clic para seleccionar o escribir..."
+                      value={mostrarDesplegable ? filtroTexto : registroEditar.nombre_lugar ?? ""}
+                      onFocus={() => {
+                        setFiltroTexto("");
+                        setMostrarDesplegable(true);
+                      }}
+                      onChange={(e) => {
+                        setFiltroTexto(e.target.value);
+                        if (!mostrarDesplegable) setMostrarDesplegable(true);
+                      }}
+                      onBlur={() => setTimeout(() => setMostrarDesplegable(false), 200)}
+                      style={{ width: "100%", padding: "8px 30px 8px 10px", border: "1px solid #cbd5e1", borderRadius: "4px", backgroundColor: "#fff", boxSizing: "border-box", fontSize: "14px", cursor: "pointer" }}
+                    />
+                    <span style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#64748b", fontSize: "12px" }}>
+                      ▼
+                    </span>
+
+                    {mostrarDesplegable && (
+                      <div style={{ position: "absolute", top: "100%", left: 0, right: 0, maxHeight: "200px", overflowY: "auto", backgroundColor: "#ffffff", border: "1px solid #cbd5e1", borderRadius: "0 0 6px 6px", boxShadow: "0px 4px 12px rgba(0, 0, 0, 0.1)", zIndex: 1000, marginTop: "2px" }}>
+                        {ubicacionesFiltradas.length > 0 ? (
+                          ubicacionesFiltradas.map((lugar, index) => (
+                            <div
+                              key={lugar.value || index}
+                              onMouseDown={() => {
+                                setRegistroEditar((prev) =>
+                                  prev ? { ...prev, nombre_lugar: lugar.label, value: lugar.value } : null
+                                );
+                                setMostrarDesplegable(false);
+                              }}
+                              style={{ padding: "10px 12px", cursor: "pointer", borderBottom: "1px solid #f1f5f9", fontSize: "13px", color: "#334155" }}
+                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
+                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                            >
+                              {lugar.label}
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ padding: "10px", color: "#94a3b8", fontSize: "13px", textAlign: "center" }}>
+                            No se encontraron ubicaciones
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: "12px", color: MJM_BLUE, marginBottom: "4px", fontWeight: "bold" }}>
+                    REFERENCIA
+                  </div>
+                  <input
+                    style={{ width: "100%", padding: "8px", border: "1px solid #cbd5e1", borderRadius: "4px", boxSizing: "border-box" }}
+                    placeholder="Referencia"
+                    maxLength={300}
+                    value={registroEditar.referencia ?? ""}
+                    onChange={(e) =>
+                      setRegistroEditar((prev) =>
+                        prev ? { ...prev, referencia: e.target.value } : null
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* COLUMNA 3 */}
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden", backgroundColor: "#fff" }}>
+                <div style={{ padding: "12px", backgroundColor: "#f1f5f9", fontWeight: "bold", color: MJM_BLUE, fontSize: "12px", borderBottom: "1px solid #e2e8f0", textAlign: "center" }}>
+                  DATOS IMPORTANTES
+                </div>
+                <textarea
+                  style={{ width: "100%", flex: 1, padding: "12px", border: "none", resize: "none", overflowY: "auto", boxSizing: "border-box" }}
+                  maxLength={1500}
+                  value={registroEditar.ocurrencia_descripcion ?? ""}
+                  onChange={(e) =>
+                    setRegistroEditar((prev) =>
+                      prev ? { ...prev, ocurrencia_descripcion: e.target.value } : null
+                    )
+                  }
+                />
+              </div>
+
+              {/* COLUMNA 4: EVIDENCIAS */}
+              <div style={{ width: "280px", minWidth: "260px", display: "flex", flexDirection: "column", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden", backgroundColor: "#fff" }}>
+                <div style={{ padding: "12px", backgroundColor: "#f1f5f9", fontWeight: "bold", color: MJM_BLUE, fontSize: "12px", borderBottom: "1px solid #e2e8f0", textAlign: "center" }}>
+                  EVIDENCIAS ({(registroEditar.lista_fotos || []).length} / 4)
+                </div>
+
+                <div style={{ padding: "10px", flex: 1, overflowY: "auto" }}>
+                  <input
+                    type="file"
+                    id="fileInputEvidencias"
+                    style={{ display: "none" }}
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileChangeEdicion}
+                  />
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {(registroEditar.lista_fotos || []).map((foto: any, index: number) => {
+                      const urlFoto = obtenerUrlFoto(foto);
+                      return (
+                        <div
+                          key={index}
+                          style={{
+                            position: "relative",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "8px",
+                            backgroundColor: "#f8fafc",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "6px",
+                          }}
+                        >
+                          <a
+                            href={urlFoto}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: "12px", fontWeight: "600", color: MJM_BLUE, textDecoration: "none", cursor: "pointer" }}
+                            className="link-evidencia-edicion"
+                          >
+                            Ver Foto N° {index + 1}
                           </a>
-          
-                          {/* Miniatura flotante al pasar el mouse */}
+
                           <div
-                            className="tooltip-miniatura"
+                            className="tooltip-miniatura-edicion"
                             style={{
                               display: "none",
                               position: "absolute",
-                              bottom: "105%",
-                              left: "50%",
-                              transform: "translateX(-50%)",
+                              right: "40px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
                               padding: "4px",
                               background: "#fff",
                               border: "1px solid #cbd5e1",
                               borderRadius: "6px",
                               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                               zIndex: 100,
-                              width: "130px",
-                              height: "130px",
+                              width: "90px",
+                              height: "90px",
                             }}
                           >
-                            <img
-                              src={urlFotoFinal}
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                                borderRadius: "4px",
-                              }}
-                              alt={`Preview ${idx + 1}`}
-                            />
+                            <img src={urlFoto} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "4px" }} alt={`Preview ${index + 1}`} />
                           </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRegistroEditar((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      lista_fotos: (prev.lista_fotos || []).filter((_, i) => i !== index),
+                                    }
+                                  : null
+                              )
+                            }
+                            style={{ backgroundColor: "rgba(239,68,68,0.9)", color: "#fff", border: "none", borderRadius: "50%", width: "22px", height: "22px", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}
+                            title="Eliminar foto"
+                          >
+                            ×
+                          </button>
                         </div>
                       );
                     })}
-                  </div>
-          
-                  {/* Estilo para activar el hover de la miniatura */}
-                  <style>{`
-                    .link-evidencia-foto:hover {
-                      background-color: #e2e8f0 !important;
-                    }
-                    .link-evidencia-foto:hover + .tooltip-miniatura,
-                    .tooltip-miniatura:hover {
-                      display: block !important;
-                    }
-                  `}</style>
-                </div>
-              );
-            }
-            return null;
-          })()}
-                        {/* DESCRIPCIÓN / SUCESO */}
-                        <div style={{ marginTop: "16px" }}>
-                          <strong style={styles.sectionTitle}>
-                            Descripción / Suceso:
-                          </strong>
-                          <div
-                            style={{
-                              ...styles.descBox,
-                              width: "100%",
-                              flex: 1,
-                              padding: "12px",
-                              fontSize: "13px",
-                              color: "#1e293b",
-                              overflowY: "auto",
-                              boxSizing: "border-box",
-                              whiteSpace: "pre-line",
-                            }}
-                          >
-                            {detalleSeleccionado.ocurrencia_descripcion ||
-                              "Sin descripción detallada."}
-                          </div>
-                        </div>
-          
-                       
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {/* Debajo de donde cierras el modal de detalle, añade esto */}
-                {registroEditar && (
-                  <div style={styles.overlay} onClick={() => setRegistroEditar(null)}>
-                    <div
-                      style={{
-            ...styles.modalDetail,
-            maxWidth: "1300px",
-            width: "95%",
-            height: "70vh",
-            display: "flex",
-            flexDirection: "column",
-            marginLeft: "300px", // Mueve el modal 50px a la derecha
-          }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {/* Contenedor Principal de las Columnas */}
-                      <div
+
+                    {(registroEditar.lista_fotos || []).length < 4 && (
+                      <button
+                        type="button"
+                        disabled={subiendoFotoEdicion}
+                        onClick={() => document.getElementById("fileInputEvidencias")?.click()}
                         style={{
+                          width: "100%",
+                          padding: "12px",
+                          borderRadius: "6px",
+                          border: "2px dashed #cbd5e1",
+                          backgroundColor: "#f8fafc",
+                          color: "#64748b",
                           display: "flex",
-                          gap: "15px",
-                          flex: 1,
-                          overflow: "hidden",
-                          padding: "20px",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: subiendoFotoEdicion ? "wait" : "pointer",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          gap: "6px",
                         }}
                       >
-                        {/* COLUMNA 1: Campos Bloqueados y Modalidad */}
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            overflowY: "auto",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "10px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: "12px",
-                              backgroundColor: "#f8fafc",
-                              borderRadius: "4px",
-                              border: "1px solid #e2e8f0",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: "12px",
-                                color: "#024885",
-                                fontWeight: "700",
-                                wordBreak: "break-word",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                maxWidth: "100%",
-                              }}
-                              title={registroEditar.modalidad_nombre ?? ""}
-                            >
-                              {registroEditar.modalidad_nombre ?? ""}
-                            </div>
-                          </div>
-          
-                          {[
-                            {
-                              label: "N° de Ocurrencia:",
-                              value: `${registroEditar.codigo_seguimiento ?? ""}-SGS-GSC`,
-                            },
-                            {
-                              label: "Apellidos y Nombres:",
-                              value: `${registroEditar.persona_nombre_completo ?? ""} - ${registroEditar.persona_dni ?? ""}`,
-                            },
-                            {
-                              label: "Origen:",
-                              value: `${registroEditar.origen_descripcion ?? ""}`,
-                            },
-                            {
-                              label: "Tipo Patrullaje:",
-                              value: `${registroEditar.tipo_patrullaje_nombre ?? ""}`,
-                            },
-                            {
-                              label: "Unidad:",
-                              value: `${registroEditar.vehiculos_json ?? ""}`,
-                            },
-                            {
-                              label: "Efectivo PNP:",
-                              value: `${registroEditar.pnp_nombre_completo ?? ""}`,
-                            },
-                          ].map((item, idx) => (
-                            <div
-                              key={idx}
-                              style={{
-                                padding: "12px",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: "4px",
-                                backgroundColor: "#f8fafc",
-                              }}
-                            >
-                              <div style={{ fontSize: "12px", color: "#64748b" }}>
-                                {item.label}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: "13px",
-                                  fontWeight: "600",
-                                  wordBreak: "break-word",
-                                }}
-                              >
-                                {item.value}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-          
-                        {/* COLUMNA 2: Edición de Fechas, Horas y Dirección */}
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            overflowY: "auto",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "10px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: "12px",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: "4px",
-                              backgroundColor: "#fff",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: "12px",
-                                color: "#024885",
-                                marginBottom: "4px",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              FECHA DEL EVENTO
-                            </div>
-              <input 
-            type="date"
-            // Establece el límite máximo como el día de hoy (YYYY-MM-DD)
-            max={new Date().toISOString().split("T")[0]}
-            value={registroEditar?.fecha_evento ? registroEditar.fecha_evento.split("T")[0] : ""} 
-            onChange={(e) => {
-              const fechaSeleccionada = e.target.value;
-              const hoy = new Date().toISOString().split("T")[0];
-          
-              // Validacion adicional por si el usuario ingresa la fecha manualmente
-              if (fechaSeleccionada > hoy) {
-                alert("No puedes seleccionar una fecha posterior al día de hoy.");
-                return;
-              }
-          
-              setRegistroEditar((prev: any) => ({
-                ...prev,
-                fecha_evento: fechaSeleccionada,
-              }));
-            }}
-            style={{
-              width: "100%",
-              padding: "8px",
-              border: "1px solid #cbd5e1",
-              borderRadius: "4px",
-              boxSizing: "border-box",
-            }}
-          />
-                          </div>
-          
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "8px",
-                            }}
-                          >
-                            {["hora_alerta", "hora_llegada", "hora_repliegue"].map(
-                              (campo) => (
-                                <div
-                                  key={campo}
-                                  style={{
-                                    padding: "10px",
-                                    border: "1px solid #e2e8f0",
-                                    borderRadius: "4px",
-                                    backgroundColor: "#fff",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      fontSize: "11px",
-                                      color: "#024885",
-                                      marginBottom: "4px",
-                                      fontWeight: "bold",
-                                    }}
-                                  >
-                                    {campo.replace("_", " ").toUpperCase()}
-                                  </div>
-                                  <input
-                                    type="time"
-                                    style={{
-                                      border: "1px solid #cbd5e1",
-                                      borderRadius: "4px",
-                                      padding: "4px",
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                    }}
-                                    defaultValue={
-                                      (registroEditar[
-                                        campo as keyof Ocurrencia
-                                      ] as string) ?? ""
-                                    }
-                                    onChange={(e) =>
-                                      setRegistroEditar({
-                                        ...registroEditar,
-                                        [campo]: e.target.value,
-                                      })
-                                    }
-                                  />
-                                </div>
-                              ),
-                            )}
-                          </div>
-          
-                          {registroEditar.hora_alerta &&
-                            registroEditar.hora_llegada &&
-                            registroEditar.hora_repliegue &&
-                            (() => {
-                              const aMinutos = (horaStr: string) => {
-                                const [h, m] = horaStr.split(":").map(Number);
-                                return h * 60 + m;
-                              };
-          
-                              const alerta = aMinutos(registroEditar.hora_alerta);
-                              let llegada = aMinutos(registroEditar.hora_llegada);
-                              let repliegue = aMinutos(registroEditar.hora_repliegue);
-          
-                              if (llegada < alerta) llegada += 1440;
-                              if (repliegue < alerta) repliegue += 1440;
-                              if (repliegue < llegada) repliegue += 1440;
-          
-                              const secuenciaCorrecta =
-                                alerta <= llegada && llegada <= repliegue;
-                              const dentroDe12Horas = repliegue - alerta <= 12 * 60;
-                              const esInvalido = !secuenciaCorrecta || !dentroDe12Horas;
-          
-                              return (
-                                esInvalido && (
-                                  <div
-                                    style={{
-                                      backgroundColor: "#FFF5F5",
-                                      borderLeftWidth: "4px",
-                                      borderLeftStyle: "solid",
-                                      borderLeftColor: "#D32F2F",
-                                      padding: "12px",
-                                      borderRadius: "4px",
-                                      display: "flex",
-                                      flexDirection: "column",
-                                      border: "1px solid #f5c6cb",
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        color: "#D32F2F",
-                                        fontSize: "12px",
-                                        fontWeight: "bold",
-                                      }}
-                                    >
-                                      Error en secuencia o rango de tiempo
-                                    </div>
-                                    <div
-                                      style={{
-                                        color: "#555",
-                                        fontSize: "11px",
-                                        marginTop: "2px",
-                                      }}
-                                    >
-                                      Secuencia: Alerta ➔ Llegada ➔ Repliegue (máximo 12
-                                      horas en total, permitiendo cruzar medianoche).
-                                    </div>
-                                  </div>
-                                )
-                              );
-                            })()}
-          
-                          <div
-                            style={{
-                              padding: "12px",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: "4px",
-                              backgroundColor: "#fff",
-                              flex: 1,
-                              display: "flex",
-                              flexDirection: "column",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: "12px",
-                                color: "#024885",
-                                marginBottom: "4px",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              DIRECCIÓN
-                            </div>
-                   <div style={{ position: "relative", width: "100%", marginBottom: "8px" }}>
-            {/* Campo de Entrada (Input) donde el usuario escribe directamente */}
-            <input
-              type="text"
-              placeholder="Haga clic para seleccionar o escribir..."
-              value={mostrarDesplegable ? filtroTexto : (registroEditar?.nombre_lugar ?? "")}
-              onFocus={() => {
-                setFiltroTexto(""); // Limpia el filtro al enfocar para mostrar todas las opciones
-                setMostrarDesplegable(true);
-              }}
-              onChange={(e) => {
-                setFiltroTexto(e.target.value);
-                if (!mostrarDesplegable) setMostrarDesplegable(true);
-              }}
-              onBlur={() => {
-                // Retraso breve para permitir que el clic en una opción se ejecute antes de cerrar
-                setTimeout(() => setMostrarDesplegable(false), 200);
-              }}
-              style={{
-                width: "100%",
-                padding: "8px 30px 8px 10px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "4px",
-                backgroundColor: "#fff",
-                boxSizing: "border-box",
-                fontSize: "14px",
-                cursor: "pointer",
-              }}
-            />
-          
-            {/* Flecha indicadora de desplegable */}
-            <span
-              style={{
-                position: "absolute",
-                right: "10px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                pointerEvents: "none",
-                color: "#64748b",
-                fontSize: "12px",
-              }}
-            >
-              ▼
-            </span>
-          
-            {/* Lista Desplegable Flotante */}
-            {mostrarDesplegable && (
-              <div
+                        <span style={{ fontSize: "16px" }}>+</span>
+                        {subiendoFotoEdicion
+                          ? "Subiendo foto(s)..."
+                          : `Agregar Foto (${(registroEditar.lista_fotos || []).length}/4)`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* BOTONES */}
+            <div style={{ padding: "16px 20px", display: "flex", gap: "10px", borderTop: "1px solid #e2e8f0" }}>
+              <button
+                type="button"
+                disabled={guardandoEdicion}
+                style={{ flex: 1, padding: "10px", backgroundColor: "#e2e8f0", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "600", color: "#334155" }}
+                onClick={() => setRegistroEditar(null)}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                disabled={horasEdicionInvalidas || guardandoEdicion || subiendoFotoEdicion}
                 style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  right: 0,
-                  maxHeight: "200px",
-                  overflowY: "auto",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "0 0 6px 6px",
-                  boxShadow: "0px 4px 12px rgba(0, 0, 0, 0.1)",
-                  zIndex: 1000,
-                  marginTop: "2px",
+                  flex: 1,
+                  padding: "10px",
+                  backgroundColor:
+                    horasEdicionInvalidas || subiendoFotoEdicion ? "#94a3b8" : MJM_BLUE,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor:
+                    horasEdicionInvalidas || subiendoFotoEdicion
+                      ? "not-allowed"
+                      : "pointer",
+                  fontWeight: "bold",
+                }}
+                onClick={() => setModalConfirmacionOpen(true)}
+              >
+                {guardandoEdicion ? "Guardando..." : "Actualizar cambios"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIRMACIÓN */}
+      {modalConfirmacionOpen && (
+        <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", backgroundColor: "rgba(0, 0, 0, 0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 9999 }}>
+          <div style={{ backgroundColor: "white", padding: "24px", borderRadius: "16px", width: "380px", textAlign: "center", boxShadow: "0 25px 50px -12px rgb(0 0 0 / 0.25)" }}>
+            <h3 style={{ color: MJM_BLUE, marginTop: 0, marginBottom: "12px", fontSize: "18px" }}>
+              ¿Confirmar cambios?
+            </h3>
+            <p style={{ color: "#475569", fontSize: "13px", marginBottom: "20px", lineHeight: "1.4" }}>
+              ¿Estás seguro de que deseas actualizar la información de este registro?
+            </p>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                type="button"
+                style={{ flex: 1, padding: "10px", backgroundColor: "#e2e8f0", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", color: "#334155" }}
+                onClick={() => setModalConfirmacionOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                style={{ flex: 1, padding: "10px", backgroundColor: MJM_BLUE, color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}
+                onClick={() => {
+                  setModalConfirmacionOpen(false);
+                  handleGuardarCambios();
                 }}
               >
-                {Array.isArray(listaUbicaciones) &&
-                  listaUbicaciones
-                    .filter((lugar: any) =>
-                      (lugar.label || "").toLowerCase().includes(filtroTexto.toLowerCase())
-                    )
-                    .map((lugar: any, index: number) => (
-                      <div
-                        key={lugar.value || index}
-                        onMouseDown={() => {
-                          // Selecciona la opción y actualiza el estado
-                          setRegistroEditar((prev: any) => ({
-                            ...prev,
-                            nombre_lugar: lugar.label,
-                            lugar_id: lugar.value,
-                          }));
-                          setMostrarDesplegable(false);
-                        }}
-                        style={{
-                          padding: "10px 12px",
-                          cursor: "pointer",
-                          borderBottom: "1px solid #f1f5f9",
-                          fontSize: "13px",
-                          color: "#334155",
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
-                      >
-                        {lugar.label}
-                      </div>
-                    ))}
-          
-                {/* Mensaje cuando no encuentra coincidencias */}
-                {Array.isArray(listaUbicaciones) &&
-                  listaUbicaciones.filter((lugar: any) =>
-                    (lugar.label || "").toLowerCase().includes(filtroTexto.toLowerCase())
-                  ).length === 0 && (
-                    <div style={{ padding: "10px", color: "#94a3b8", fontSize: "13px", textAlign: "center" }}>
-                      No se encontraron ubicaciones
-                    </div>
-                  )}
-              </div>
-            )}
-          </div>
-                            <div
-                              style={{
-                                fontSize: "12px",
-                                color: "#024885",
-                                marginBottom: "4px",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              REFERENCIA
-                            </div>
-                            <input
-                              style={{
-                                width: "100%",
-                                padding: "8px",
-                                border: "1px solid #cbd5e1",
-                                borderRadius: "4px",
-                                boxSizing: "border-box",
-                              }}
-                              placeholder="Referencia"
-                              defaultValue={registroEditar.referencia ?? ""}
-                              onChange={(e) =>
-                                setRegistroEditar({
-                                  ...registroEditar,
-                                  referencia: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                        </div>
-          
-                        {/* COLUMNA 3: Datos Importantes (Descripción) */}
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            display: "flex",
-                            flexDirection: "column",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: "8px",
-                            overflow: "hidden",
-                            backgroundColor: "#fff",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: "12px",
-                              backgroundColor: "#f1f5f9",
-                              fontWeight: "bold",
-                              color: "#024885",
-                              fontSize: "12px",
-                              borderBottom: "1px solid #e2e8f0",
-                              textAlign: "center",
-                            }}
-                          >
-                            DATOS IMPORTANTES
-                          </div>
-                          <textarea
-                            style={{
-                              width: "100%",
-                              flex: 1,
-                              padding: "12px",
-                              border: "none",
-                              resize: "none",
-                              overflowY: "auto",
-                              boxSizing: "border-box",
-                            }}
-                            defaultValue={registroEditar.ocurrencia_descripcion ?? ""}
-                            onChange={(e) =>
-                              setRegistroEditar({
-                                ...registroEditar,
-                                ocurrencia_descripcion: e.target.value,
-                              })
-                            }
-                          />
-                        </div>
-          
-                        {/* COLUMNA 4: Evidencias Fotográficas (Grilla 2x2 optimizada) */}
-                        {/* COLUMNA 4: Evidencias Fotográficas (Versión optimizada con enlaces y hover para ahorrar RAM) */}
-                       {/* COLUMNA 4: Evidencias Fotográficas */}
-          <div
-            style={{
-              width: "280px",
-              minWidth: "280px",
-              display: "flex",
-              flexDirection: "column",
-              border: "1px solid #e2e8f0",
-              borderRadius: "8px",
-              overflow: "hidden",
-              backgroundColor: "#fff",
-            }}
-          >
-            <div
-              style={{
-                padding: "12px",
-                backgroundColor: "#f1f5f9",
-                fontWeight: "bold",
-                color: "#024885",
-                fontSize: "12px",
-                borderBottom: "1px solid #e2e8f0",
-                textAlign: "center",
-              }}
-            >
-              EVIDENCIAS ({(registroEditar?.lista_fotos || []).length} / 4)
-            </div>
-          
-            <div style={{ padding: "10px", flex: 1, overflowY: "auto" }}>
-              {(() => {
-                const fotosArray = registroEditar?.lista_fotos || [];
-          
-                // Función para eliminar foto por índice
-                const eliminarFoto = (indexAEliminar: number) => {
-                  const nuevasFotos = fotosArray.filter(
-                    (_: any, i: number) => i !== indexAEliminar
-                  );
-                  setRegistroEditar((prev: any) => ({
-                    ...prev,
-                    lista_fotos: nuevasFotos,
-                  }));
-                };
-          
-                // Función auxiliar para comprimir imagen con Canvas antes de guardar en Base64
-                const comprimirImagen = (file: File): Promise<string> => {
-                  return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.readAsDataURL(file);
-                    reader.onload = (event) => {
-                      const img = new Image();
-                      img.src = event.target?.result as string;
-                      img.onload = () => {
-                        const canvas = document.createElement("canvas");
-                        const MAX_WIDTH = 1000;
-                        const MAX_HEIGHT = 1000;
-                        let width = img.width;
-                        let height = img.height;
-          
-                        if (width > height) {
-                          if (width > MAX_WIDTH) {
-                            height *= MAX_WIDTH / width;
-                            width = MAX_WIDTH;
-                          }
-                        } else {
-                          if (height > MAX_HEIGHT) {
-                            width *= MAX_HEIGHT / height;
-                            height = MAX_HEIGHT;
-                          }
-                        }
-          
-                        canvas.width = width;
-                        canvas.height = height;
-          
-                        const ctx = canvas.getContext("2d");
-                        ctx?.drawImage(img, 0, 0, width, height);
-          
-                        // Comprime a JPEG con 70% de calidad (reduce archivos de 5MB a ~120KB)
-                        const dataUrlComprimida = canvas.toDataURL("image/jpeg", 0.7);
-                        resolve(dataUrlComprimida);
-                      };
-                      img.onerror = (err) => reject(err);
-                    };
-                    reader.onerror = (err) => reject(err);
-                  });
-                };
-          
-                // Manejo estandarizado y optimizado al seleccionar fotos locales
-               const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-            const files = e.target.files;
-            if (!files || files.length === 0) return;
-          
-            const totalActual = fotosArray.length;
-            const espacioDisponible = 4 - totalActual;
-          
-            if (espacioDisponible <= 0) {
-              alert("Ya has alcanzado el límite máximo de 4 fotos.");
-              return;
-            }
-          
-            const archivosAProcesar = Array.from(files).slice(0, espacioDisponible);
-          
-            // LOG DE PRUEBA: Tamaño del primer archivo seleccionado
-            const pesoOriginalMB = (archivosAProcesar[0].size / (1024 * 1024)).toFixed(2);
-            console.log(`📸 Archivo original [1]: ${pesoOriginalMB} MB`);
-          
-            try {
-              // 1. Procesamos y comprimimos cada foto antes de actualizar el estado
-              const nuevasFotosComprimidas = await Promise.all(
-                archivosAProcesar.map((file) => comprimirImagen(file))
-              );
-          
-              // LOG DE PRUEBA: Tamaño del Base64 resultante tras la compresión
-              const pesoBase64MB = (
-                (nuevasFotosComprimidas[0].length * (3 / 4)) /
-                (1024 * 1024)
-              ).toFixed(2);
-              console.log(`⚡ Base64 comprimido en Frontend [1]: ${pesoBase64MB} MB`);
-          
-              // 2. Guardamos la lista actualizada
-              setRegistroEditar((prev: any) => ({
-                ...prev,
-                lista_fotos: [...(prev?.lista_fotos || []), ...nuevasFotosComprimidas],
-              }));
-            } catch (error) {
-              console.error("Error comprimiendo las fotos en el cliente:", error);
-            }
-          
-            // Notificar si se seleccionaron más fotos de las permitidas
-            if (files.length > espacioDisponible) {
-              alert(
-                `Solo se pudieron agregar ${espacioDisponible} foto(s) más para respetar el límite máximo de 4.`
-              );
-            }
-          
-            // Limpiar el valor del input file para permitir seleccionar el mismo archivo si es necesario
-            e.target.value = "";
-          };
-                return (
-                  <div>
-                    <input
-                      type="file"
-                      id="fileInputEvidencias"
-                      style={{ display: "none" }}
-                      accept="image/*"
-                      multiple
-                      onChange={handleFileChange}
-                    />
-          
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "8px",
-                      }}
-                    >
-                      {/* Mapeo de URLs / Base64 */}
-                   
-                        {/* Mapeo de URLs / Base64 en Edición */}
-          {Array.isArray(fotosArray) &&
-            fotosArray.map((foto: any, index: number) => {
-              // CAMBIO CLAVE: Usamos la función robusta para limpiar y validar la URL de R2 o local
-              const urlFoto = obtenerUrlFoto(foto);
-          
-              return (
-                <div
-                  key={index}
-                  style={{
-                    position: "relative",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "8px",
-                    backgroundColor: "#f8fafc",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "6px",
-                  }}
-                >
-                  <a
-                    href={urlFoto}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      color: "#024885",
-                      textDecoration: "none",
-                      cursor: "pointer",
-                    }}
-                    className="link-evidencia-edicion"
-                  >
-                    Ver Foto N° {index + 1}
-                  </a>
-          
-                  {/* Preview Flotante */}
-                  <div
-                    className="tooltip-miniatura-edicion"
-                    style={{
-                      display: "none",
-                      position: "absolute",
-                      right: "40px",
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      padding: "4px",
-                      background: "#fff",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "6px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                      zIndex: 100,
-                      width: "90px",
-                      height: "90px",
-                    }}
-                  >
-                    <img
-                      src={urlFoto}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        borderRadius: "4px",
-                      }}
-                      alt={`Preview ${index + 1}`}
-                    />
-                  </div>
-          
-                  {/* Botón eliminar */}
-                  <button
-                    type="button"
-                    onClick={() => eliminarFoto(index)}
-                    style={{
-                      backgroundColor: "rgba(239,68,68,0.9)",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "50%",
-                      width: "22px",
-                      height: "22px",
-                      fontSize: "12px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: "bold",
-                    }}
-                    title="Eliminar foto"
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            })}
-                      {/* Botón agregar foto */}
-                      {fotosArray.length < 4 && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            document.getElementById("fileInputEvidencias")?.click()
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "12px",
-                            borderRadius: "6px",
-                            border: "2px dashed #cbd5e1",
-                            backgroundColor: "#f8fafc",
-                            color: "#64748b",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                            gap: "6px",
-                          }}
-                        >
-                          <span style={{ fontSize: "16px" }}>+</span>
-                          Agregar Foto ({fotosArray.length}/4)
-                        </button>
-                      )}
-                    </div>
-          
-                    <style>{`
-                      .link-evidencia-edicion:hover + .tooltip-miniatura-edicion,
-                      .tooltip-miniatura-edicion:hover {
-                        display: block !important;
-                      }
-                    `}</style>
-                  </div>
-                );
-              })()}
+                Sí, actualizar
+              </button>
             </div>
           </div>
-                      </div>
-          
-                      {/* BOTONES */}
-                      {/* BOTONES */}
-                      <div
-                        style={{
-                          padding: "20px",
-                          display: "flex",
-                          gap: "10px",
-                          borderTop: "1px solid #e2e8f0",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          style={{
-                            flex: 1,
-                            padding: "10px",
-                            backgroundColor: "#e2e8f0",
-                            border: "none",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                            fontWeight: "600",
-                            color: "#334155",
-                          }}
-                          onClick={() => setRegistroEditar(null)}
-                        >
-                          Cancelar
-                        </button>
-          
-                        <button
-                          type="button"
-                          style={{
-                            flex: 1,
-                            padding: "10px",
-                            backgroundColor: "#024885",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                          }}
-                          onClick={() => {
-                            // Abre el modal de confirmación en lugar de guardar directamente
-                            setModalConfirmacionOpen(true);
-                          }}
-                        >
-                          Actualizar cambios
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {/* MODAL DE CONFIRMACIÓN */}
-                {modalConfirmacionOpen && (
-                  <div
-                    style={{
-                      position: "fixed",
-                      top: 0,
-                      left: 0,
-                      width: "100vw",
-                      height: "100vh",
-                      backgroundColor: "rgba(0, 0, 0, 0.6)",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      zIndex: 9999,
-                    }}
-                  >
-                    <div
-                      style={{
-                        backgroundColor: "white",
-                        padding: "24px",
-                        borderRadius: "16px",
-                        width: "380px",
-                        textAlign: "center",
-                        boxShadow: "0 25px 50px -12px rgb(0 0 0 / 0.25)",
-                      }}
-                    >
-                      <h3
-                        style={{
-                          color: "#024885",
-                          marginTop: 0,
-                          marginBottom: "12px",
-                          fontSize: "18px",
-                        }}
-                      >
-                        ¿Confirmar cambios?
-                      </h3>
-                      <p
-                        style={{
-                          color: "#475569",
-                          fontSize: "13px",
-                          marginBottom: "20px",
-                          lineHeight: "1.4",
-                        }}
-                      >
-                        ¿Estás seguro de que deseas actualizar la información de este
-                        registro?
-                      </p>
-                      <div style={{ display: "flex", gap: "10px" }}>
-                        <button
-                          type="button"
-                          style={{
-                            flex: 1,
-                            padding: "10px",
-                            backgroundColor: "#e2e8f0",
-                            border: "none",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            fontWeight: "600",
-                            color: "#334155",
-                          }}
-                          onClick={() => setModalConfirmacionOpen(false)}
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          style={{
-                            flex: 1,
-                            padding: "10px",
-                            backgroundColor: "#024885",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            fontWeight: "600",
-                          }}
-                          onClick={() => {
-                            setModalConfirmacionOpen(false);
-                            handleGuardarCambios();
-                          }}
-                        >
-                          Sí, actualizar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-     
-      {/* Modales de Inserción */}
-      <RegistroOcurrencia visible={modalInsertOpen === "camara"} onClose={() => { setModalInsertOpen(null); setFiltroPropietario("TODOS"); setPaginaActual(1); fetchOcurrencias(1, registrosPorPagina); fetchTotalMisRegistros(); fetchTotalSinRestriccion(); }} initialData={{ idTipo: "camara" }} />
-      <RegistroOcurrenciat visible={modalInsertOpen === "telefono"} onClose={() => { setModalInsertOpen(null); setFiltroPropietario("TODOS"); setPaginaActual(1); fetchOcurrencias(1, registrosPorPagina); fetchTotalMisRegistros(); fetchTotalSinRestriccion(); }} initialData={{ idTipo: "telefono" }} />
-      <RegistroBoton visible={modalInsertOpen === "boton"} onClose={() => { setModalInsertOpen(null); setFiltroPropietario("TODOS"); setPaginaActual(1); fetchOcurrencias(1, registrosPorPagina); fetchTotalMisRegistros(); fetchTotalSinRestriccion(); }} initialData={{ idTipo: "boton" }} />
-      <RegistroRedes visible={modalInsertOpen === "redes"} onClose={() => { setModalInsertOpen(null); setFiltroPropietario("TODOS"); setPaginaActual(1); fetchOcurrencias(1, registrosPorPagina); fetchTotalMisRegistros(); fetchTotalSinRestriccion(); }} initialData={{ idTipo: "redes" }} />
-      <RegistroOperador visible={modalInsertOpen === "operador"} onClose={() => { setModalInsertOpen(null); setFiltroPropietario("TODOS"); setPaginaActual(1); fetchOcurrencias(1, registrosPorPagina); fetchTotalMisRegistros(); fetchTotalSinRestriccion(); }} initialData={{ idTipo: "operador" }} />
-      <RegistroSerIn visible={modalInsertOpen === "servicioIn"} onClose={() => { setModalInsertOpen(null); setFiltroPropietario("TODOS"); setPaginaActual(1); fetchOcurrencias(1, registrosPorPagina); fetchTotalMisRegistros(); fetchTotalSinRestriccion(); }} initialData={{ idTipo: "servicioIn" }} />
-      <RegistroSerFi visible={modalInsertOpen === "servicioFi"} onClose={() => { setModalInsertOpen(null); setFiltroPropietario("TODOS"); setPaginaActual(1); fetchOcurrencias(1, registrosPorPagina); fetchTotalMisRegistros(); fetchTotalSinRestriccion(); }} initialData={{ idTipo: "servicioFi" }} />
+        </div>
+      )}
+
+      {/* OVERLAY DE PROGRESO AL GUARDAR EDICIÓN */}
+      {guardandoEdicion && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 10000 }}>
+          <div style={{ backgroundColor: "#fff", padding: 24, borderRadius: 14, width: 300, textAlign: "center" }}>
+            <div style={{ fontSize: 16, fontWeight: "bold", color: MJM_BLUE, marginBottom: 12 }}>
+              {isFinished ? "✓ " : ""}{uploadStatus}
+            </div>
+            <div style={styles.progressBarBackground}>
+              <div style={{ ...styles.progressBarFill, width: `${uploadProgress}%` }} />
+            </div>
+            <div style={styles.progressPercentage}>{uploadProgress}%</div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALES MONTADOS SOLO CUANDO SE ABREN (CERO PETICIONES EN SEGUNDO PLANO) */}
+      {modalInsertOpen === "camara" && (
+        <RegistroOcurrencia visible={true} onClose={handleCloseModalInsert} initialData={{ idTipo: "camara" }} />
+      )}
+      {modalInsertOpen === "telefono" && (
+        <RegistroOcurrenciat visible={true} onClose={handleCloseModalInsert} initialData={{ idTipo: "telefono" }} />
+      )}
+      {modalInsertOpen === "boton" && (
+        <RegistroBoton visible={true} onClose={handleCloseModalInsert} initialData={{ idTipo: "boton" }} />
+      )}
+      {modalInsertOpen === "redes" && (
+        <RegistroRedes visible={true} onClose={handleCloseModalInsert} initialData={{ idTipo: "redes" }} />
+      )}
+      {modalInsertOpen === "operador" && (
+        <RegistroOperador visible={true} onClose={handleCloseModalInsert} initialData={{ idTipo: "operador" }} />
+      )}
+      {modalInsertOpen === "servicioIn" && (
+        <RegistroSerIn visible={true} onClose={handleCloseModalInsert} initialData={{ idTipo: "servicioIn" }} />
+      )}
+      {modalInsertOpen === "servicioFi" && (
+        <RegistroSerFi visible={true} onClose={handleCloseModalInsert} initialData={{ idTipo: "servicioFi" }} />
+      )}
     </div>
   );
 }
 
-// ESTILOS
 const styles: Record<string, React.CSSProperties | any> = {
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
   tableScrollContainer: {
     overflowX: "auto",
     overflowY: "auto",
     minHeight: "515px",
-    maxHeight: "70vh", // Esto limita la altura máxima de la tabla y activa el scroll vertical interno SOLO cuando superes esa altura (ideal si pones 25 o 50 filas)
+    maxHeight: "70vh",
   },
-  modalContent: {
-    backgroundColor: "#FFFFFF",
-    padding: 30,
-    borderRadius: 20,
-    alignItems: "center",
-    width: "85%",
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  progressTitle: { fontSize: 16, fontWeight: "bold", marginBottom: 15 },
   progressBarBackground: {
     width: "100%",
     height: 10,
@@ -2099,28 +1749,28 @@ const styles: Record<string, React.CSSProperties | any> = {
     color: "#666",
     fontWeight: "bold",
   },
-container: {
+  container: {
     padding: "24px",
     backgroundColor: "#f9fbfc",
-    minHeight: "350vh",     // Permite que la página crezca de manera natural si hay más contenido
+    minHeight: "100vh",
     width: "100%",
     display: "flex",
     flexDirection: "column",
     boxSizing: "border-box",
   },
- grid: {
-    display: "flex",          // Cambiamos de grid a flexbox horizontal
-    flexDirection: "row",     // Forzamos la orientación en una sola fila
-    gap: "12px",              // Espacio uniforme entre los botones
+  grid: {
+    display: "flex",
+    flexDirection: "row",
+    gap: "12px",
     marginBottom: "24px",
     flexShrink: 0,
     width: "100%",
-    overflowX: "auto",        // Agrega scroll horizontal por seguridad si la pantalla es muy pequeña
+    overflowX: "auto",
   },
   card: {
-    flex: 1,                  // Hace que cada tarjeta o botón ocupe el mismo ancho proporcionalmente
-    minWidth: "140px",        // Ancho mínimo para que el contenido no se comprima demasiado
-    padding: "14px 10px",     // Padding optimizado para mantenerlos compactos
+    flex: 1,
+    minWidth: "140px",
+    padding: "14px 10px",
     borderRadius: "12px",
     color: "white",
     display: "flex",
@@ -2153,40 +1803,6 @@ container: {
     padding: "4px",
     borderRadius: "8px",
   },
-  tab: {
-    border: "none",
-    padding: "8px 16px",
-    cursor: "pointer",
-    borderRadius: "6px",
-    backgroundColor: "transparent",
-    color: "#64748b",
-    fontWeight: "600",
-    fontSize: "13px",
-    transition: "all 0.2s",
-  },
-  tabActive: {
-    border: "none",
-    padding: "8px 16px",
-    cursor: "pointer",
-    borderRadius: "6px",
-    backgroundColor: MJM_BLUE,
-    color: "white",
-    fontWeight: "600",
-    fontSize: "13px",
-    transition: "all 0.2s",
-  },
-  btnExport: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "8px 14px",
-    borderRadius: "6px",
-    border: "none",
-    color: "white",
-    fontSize: "13px",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
   tableCard: {
     backgroundColor: "white",
     borderRadius: "12px",
@@ -2196,9 +1812,7 @@ container: {
     flexDirection: "column",
     overflow: "hidden",
     position: "relative",
-    // ELIMINA O COMENTA: flex: 1 y minHeight: 0 para que la tarjeta no intente estirarse a la fuerza ocupando toda la pantalla vacía.
   },
-
   table: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" },
   thead: {
     backgroundColor: "#024885",
@@ -2223,7 +1837,6 @@ container: {
     overflow: "hidden",
   },
   tr: { cursor: "pointer", transition: "background-color 0.2s" },
-
   celdaTruncadaContainer: {
     display: "block",
     width: "100%",
@@ -2250,27 +1863,6 @@ container: {
     display: "block",
     width: "100%",
   },
-
-  img: {
-    width: "42px",
-    height: "42px",
-    borderRadius: "8px",
-    objectFit: "cover",
-    border: "1px solid #cbd5e1",
-  },
-  photoCountBadge: {
-    position: "absolute",
-    bottom: "-2px",
-    right: "-2px",
-    backgroundColor: "#1e293b",
-    color: "white",
-    fontSize: "9px",
-    fontWeight: "bold",
-    padding: "1px 4px",
-    borderRadius: "6px",
-    border: "1px solid white",
-  },
-
   tableFooterPagination: {
     display: "flex",
     justifyContent: "space-between",
@@ -2280,17 +1872,6 @@ container: {
     backgroundColor: "#ffffff",
     position: "relative",
     flexShrink: 0,
-  },
-  selectRows: {
-    padding: "6px 10px",
-    borderRadius: "6px",
-    border: "1px solid #e2e8f0",
-    backgroundColor: "#ffffff",
-    color: "#334155",
-    fontSize: "12px",
-    fontWeight: "600",
-    outline: "none",
-    cursor: "pointer",
   },
   paginationFlex: {
     display: "flex",
@@ -2319,7 +1900,6 @@ container: {
     display: "inline-block",
     userSelect: "none",
   },
-
   overlay: {
     position: "fixed",
     top: 0,
@@ -2365,11 +1945,6 @@ container: {
     cursor: "pointer",
     color: "#94a3b8",
   },
-  modalGridDobleFila: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "0px 24px",
-  },
   infoRowGrid: {
     display: "flex",
     flexDirection: "row",
@@ -2408,11 +1983,6 @@ container: {
     lineHeight: "1.5",
     margin: 0,
   },
-  galleryGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-    gap: "10px",
-  },
   badge: {
     padding: "3px 8px",
     borderRadius: "12px",
@@ -2421,13 +1991,5 @@ container: {
     fontWeight: "700",
     display: "inline-block",
     marginTop: "4px",
-  },
-  imgGalleryItem: {
-    width: "100%",
-    height: "95px",
-    borderRadius: "8px",
-    objectFit: "cover",
-    border: "1px solid #cbd5e1",
-    backgroundColor: "#f8fafc",
   },
 };

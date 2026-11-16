@@ -383,7 +383,7 @@ const confirmIOSSelection = () => {
       if (Platform.OS === "web") {
         lat = -12.073769;
         lon = -77.039673;
-        direccionNombre = "CSI MDJM (Web Default)";
+        direccionNombre = "CSI MDJM";
       } else {
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {

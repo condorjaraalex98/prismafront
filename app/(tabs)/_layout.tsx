@@ -36,9 +36,20 @@ export default function TabLayout() {
     }, 2700000); 
   };
 
-  useEffect(() => {
-    if (!loading && !userData) {
-      router.replace('/'); 
+ useEffect(() => {
+    if (!loading) {
+      if (!userData) {
+        router.replace('/');
+        return;
+      }
+
+      // Si recargan la página y son Rol 4 o 5, aseguramos que se queden en su respectiva pantalla
+      const rol = Number(userData.id_rol);
+      if (rol === 4) {
+        router.replace('/principalDron');
+      } else if (rol === 5) {
+        router.replace('/principalmovilidad');
+      }
     }
   }, [userData, loading]);
 

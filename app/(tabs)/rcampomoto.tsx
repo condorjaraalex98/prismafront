@@ -1,10 +1,12 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,7 +15,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
 const LIMIT_INICIAL = 5;
 
@@ -47,14 +50,12 @@ interface CardProps {
   onSelectUser?: (id: number | string, nombre: string) => void;
 }
 
-// 📌 Horario específico de Motocicletas (Mañana: 07:00 - 14:00 | Tarde: 14:00 - 22:00 | Noche: 22:00 - 06:00)
 const obtenerTextoTurnoMotos = (): string => {
   const ahora = new Date();
   const hora = ahora.getHours();
   const minutos = ahora.getMinutes();
   const tiempoMinutos = hora * 60 + minutos;
 
-  // 📌 360 minutos = 06:00 hrs | 840 minutos = 14:00 hrs | 1320 minutos = 22:00 hrs
   if (tiempoMinutos >= 360 && tiempoMinutos < 840) {
     return "Turno Mañana Motos (06:00 - 13:59)";
   } else if (tiempoMinutos >= 840 && tiempoMinutos < 1320) {
@@ -108,7 +109,11 @@ const DashboardCard = React.memo(
         <View style={styles.divider} />
 
         {loading ? (
-          <ActivityIndicator size="small" color={colorTema} style={{ marginVertical: 25 }} />
+          <ActivityIndicator
+            size="small"
+            color={colorTema}
+            style={{ marginVertical: 25 }}
+          />
         ) : datos.length > 0 ? (
           <>
             {datosVisibles.map((item, index) => {
@@ -119,7 +124,7 @@ const DashboardCard = React.memo(
               );
 
               return (
-                <View key={`${item.label}-${index}`} style={styles.barGroup}>
+                <View key={`${item.id ?? item.label}-${index}`} style={styles.barGroup}>
                   {isUserCard ? (
                     <TouchableOpacity
                       style={styles.labelRowClickable}
@@ -166,7 +171,9 @@ const DashboardCard = React.memo(
                 activeOpacity={0.7}
               >
                 <ThemedText style={[styles.verMasText, { color: colorTema }]}>
-                  {showAll ? "Ver menos" : `Ver más (${datos.length - LIMIT_INICIAL} ocultos)`}
+                  {showAll
+                    ? "Ver menos"
+                    : `Ver más (${datos.length - LIMIT_INICIAL} ocultos)`}
                 </ThemedText>
                 <Ionicons
                   name={showAll ? "chevron-up" : "chevron-down"}
@@ -177,7 +184,9 @@ const DashboardCard = React.memo(
             )}
           </>
         ) : (
-          <ThemedText style={styles.emptyText}>No hay registros de motocicletas en este turno.</ThemedText>
+          <ThemedText style={styles.emptyText}>
+            No hay registros de motocicletas en este turno.
+          </ThemedText>
         )}
       </View>
     );
@@ -192,7 +201,6 @@ export default function GraficoMotocicletasScreen() {
 
   const [showAllUsuarios, setShowAllUsuarios] = useState<boolean>(false);
 
-  // Estados del Modal y Navegación
   const [selectedUserId, setSelectedUserId] = useState<number | string | null>(null);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [modalidadesUsuario, setModalidadesUsuario] = useState<ModalidadPorUsuario[]>([]);
@@ -202,99 +210,154 @@ export default function GraficoMotocicletasScreen() {
   const [direccionesModalidad, setDireccionesModalidad] = useState<DireccionItem[]>([]);
   const [loadingDirecciones, setLoadingDirecciones] = useState<boolean>(false);
 
- // ✅ CÓDIGO NUEVO:
-const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoMotos());
+  const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoMotos());
 
-useEffect(() => {
-  // Actualizar el estado al montar el componente
-  setTextoTurno(obtenerTextoTurnoMotos());
+  const isMountedRef = useRef(true);
+  const statsAbortRef = useRef<AbortController | null>(null);
+  const modalAbortRef = useRef<AbortController | null>(null);
 
-  // Verificar la hora cada 30 segundos
-  const interval = setInterval(() => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      statsAbortRef.current?.abort();
+      modalAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
     setTextoTurno(obtenerTextoTurnoMotos());
-  }, 30000);
-
-  return () => clearInterval(interval);
-}, []);
-  // 📌 Forzamos permanentemente id_tipop=3 e id_tipo_vehiculo=2 (Excluyendo RCECOM)
-  const construirQueryString = useCallback(() => {
-    return "?excluir_origenes=1,5,6,7,11&id_tipop=3&id_tipo_vehiculo=2&";
+    const interval = setInterval(() => {
+      setTextoTurno(obtenerTextoTurnoMotos());
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchEstadisticas = useCallback(async () => {
+    statsAbortRef.current?.abort();
+    const controller = new AbortController();
+    statsAbortRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), 15000);
+
     setErrorMessage(null);
     try {
-      const url = `${API_BASE_URL}/ocurrencias/estadisticas${construirQueryString()}`;
-      const response = await fetch(url);
+      const url = `${API_BASE_URL}/ocurrencias/estadisticas?excluir_origenes=1,5,6,7,11&id_tipop=3&id_tipo_vehiculo=2&solo_usuarios=1`;
+      const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) throw new Error("Error en la petición de datos");
       const data = await response.json();
 
+      if (!isMountedRef.current) return;
       setEstadisticasUsuarios(data.por_usuario || []);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === "AbortError") return;
       console.error("Error al cargar estadísticas de motos:", error);
-      setErrorMessage("No se pudieron actualizar los datos del servidor.");
+      if (isMountedRef.current) {
+        setErrorMessage("No se pudieron actualizar los datos del servidor.");
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      clearTimeout(timer);
+      if (isMountedRef.current && statsAbortRef.current === controller) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [construirQueryString]);
+  }, []);
 
   useEffect(() => {
     fetchEstadisticas();
   }, [fetchEstadisticas]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchEstadisticas();
-  };
+  }, [fetchEstadisticas]);
 
-  const handleSelectUser = useCallback(async (idUsuario: number | string, nombreUsuario: string) => {
-    setSelectedUserId(idUsuario);
-    setSelectedUser(nombreUsuario);
-    setSelectedModalidad(null);
-    setLoadingUserModalidades(true);
-    try {
-      const url = `${API_BASE_URL}/ocurrencias/modalidades-por-usuario?id_usuario=${idUsuario}&id_tipop=3&id_tipo_vehiculo=2&excluir_origenes=1,5,6,7,11&`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Error obteniendo detalles");
-      const data = await response.json();
-      setModalidadesUsuario(data.modalidades || []);
-    } catch (error) {
-      console.error("Error:", error);
-      setModalidadesUsuario([]);
-    } finally {
-      setLoadingUserModalidades(false);
-    }
-  }, []);
+  const handleSelectUser = useCallback(
+    async (idUsuario: number | string, nombreUsuario: string) => {
+      modalAbortRef.current?.abort();
+      const controller = new AbortController();
+      modalAbortRef.current = controller;
 
-  const handleSelectModalidad = useCallback(async (nombreModalidad: string) => {
-    if (!selectedUserId) return;
-    setSelectedModalidad(nombreModalidad);
-    setLoadingDirecciones(true);
-    try {
-      const url = `${API_BASE_URL}/ocurrencias/detalle-por-modalidad?id_usuario=${selectedUserId}&modalidad=${encodeURIComponent(nombreModalidad)}&id_tipop=3&id_tipo_vehiculo=2&excluir_origenes=1,5,6,7,11&`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Error obteniendo direcciones");
-      const data = await response.json();
-      setDireccionesModalidad(data.direcciones || []);
-    } catch (error) {
-      console.error("Error:", error);
-      setDireccionesModalidad([]);
-    } finally {
-      setLoadingDirecciones(false);
-    }
-  }, [selectedUserId]);
+      setSelectedUserId(idUsuario);
+      setSelectedUser(nombreUsuario);
+      setSelectedModalidad(null);
+      setLoadingUserModalidades(true);
 
-  const cerrarModal = () => {
+      try {
+        const url = `${API_BASE_URL}/ocurrencias/modalidades-por-usuario?id_usuario=${encodeURIComponent(
+          String(idUsuario)
+        )}&id_tipop=3&id_tipo_vehiculo=2&excluir_origenes=1,5,6,7,11`;
+
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("Error obteniendo detalles");
+        const data = await response.json();
+        if (isMountedRef.current) {
+          setModalidadesUsuario(data.modalidades || []);
+        }
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        console.error("Error:", error);
+        if (isMountedRef.current) setModalidadesUsuario([]);
+      } finally {
+        if (isMountedRef.current && modalAbortRef.current === controller) {
+          setLoadingUserModalidades(false);
+        }
+      }
+    },
+    []
+  );
+
+  const handleSelectModalidad = useCallback(
+    async (nombreModalidad: string) => {
+      if (!selectedUserId) return;
+      modalAbortRef.current?.abort();
+      const controller = new AbortController();
+      modalAbortRef.current = controller;
+
+      setSelectedModalidad(nombreModalidad);
+      setLoadingDirecciones(true);
+
+      try {
+        const url = `${API_BASE_URL}/ocurrencias/detalle-por-modalidad?id_usuario=${encodeURIComponent(
+          String(selectedUserId)
+        )}&modalidad=${encodeURIComponent(
+          nombreModalidad
+        )}&id_tipop=3&id_tipo_vehiculo=2&excluir_origenes=1,5,6,7,11`;
+
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("Error obteniendo direcciones");
+        const data = await response.json();
+        if (isMountedRef.current) {
+          setDireccionesModalidad(data.direcciones || []);
+        }
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        console.error("Error:", error);
+        if (isMountedRef.current) setDireccionesModalidad([]);
+      } finally {
+        if (isMountedRef.current && modalAbortRef.current === controller) {
+          setLoadingDirecciones(false);
+        }
+      }
+    },
+    [selectedUserId]
+  );
+
+  const cerrarModal = useCallback(() => {
+    modalAbortRef.current?.abort();
     setSelectedUserId(null);
     setSelectedUser(null);
     setSelectedModalidad(null);
     setModalidadesUsuario([]);
     setDireccionesModalidad([]);
-  };
+  }, []);
 
   const totalUsuarios = useMemo(
-    () => estadisticasUsuarios.reduce((acc, item) => acc + Number(item.value || 0), 0),
+    () =>
+      estadisticasUsuarios.reduce(
+        (acc, item) => acc + Number(item.value || 0),
+        0
+      ),
     [estadisticasUsuarios]
   );
 
@@ -305,21 +368,35 @@ useEffect(() => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={MJM_BLUE} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={MJM_BLUE}
+            />
           }
         >
           {/* CABECERA Y TURNO ESPECIAL DE MOTOS */}
           <View style={styles.headerContainer}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <ThemedText style={styles.mainTitle}>DASHBOARD - MOTOCICLETAS</ThemedText>
+              <ThemedText style={styles.mainTitle}>
+                DASHBOARD - MOTOCICLETAS
+              </ThemedText>
               <View style={styles.turnoBadge}>
                 <Ionicons name="time-outline" size={12} color={MJM_BLUE} />
-                <ThemedText style={styles.turnoBadgeText}>{textoTurno}</ThemedText>
+                <ThemedText style={styles.turnoBadgeText}>
+                  {textoTurno}
+                </ThemedText>
               </View>
             </View>
-            <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={onRefresh}
+              activeOpacity={0.8}
+            >
               <Ionicons name="refresh" size={16} color="white" />
-              <ThemedText style={styles.refreshButtonText}>Actualizar</ThemedText>
+              <ThemedText style={styles.refreshButtonText}>
+                Actualizar
+              </ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -347,13 +424,21 @@ useEffect(() => {
         </ScrollView>
 
         {/* MODAL DE DESGLOSE */}
-        <Modal visible={!!selectedUser} animationType="fade" transparent={true}>
+        <Modal
+          visible={!!selectedUser}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={cerrarModal}
+        >
           <View style={styles.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={cerrarModal} />
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
                   <ThemedText style={styles.modalTitle}>
-                    {selectedModalidad ? "DIRECCIONES ASOCIADAS (MOTOS)" : "DESGLOSE POR PERSONAL (MOTOS)"}
+                    {selectedModalidad
+                      ? "DIRECCIONES ASOCIADAS (MOTOS)"
+                      : "DESGLOSE POR PERSONAL (MOTOS)"}
                   </ThemedText>
                   <ThemedText style={styles.modalSubtitle} numberOfLines={1}>
                     {selectedModalidad ? selectedModalidad : selectedUser}
@@ -368,54 +453,98 @@ useEffect(() => {
 
               {!selectedModalidad ? (
                 loadingUserModalidades ? (
-                  <ActivityIndicator size="small" color={MJM_BLUE} style={{ marginVertical: 30 }} />
+                  <ActivityIndicator
+                    size="small"
+                    color={MJM_BLUE}
+                    style={{ marginVertical: 30 }}
+                  />
                 ) : modalidadesUsuario.length > 0 ? (
-                  <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
-                    {modalidadesUsuario.map((mod, idx) => (
+                  <FlatList
+                    data={modalidadesUsuario}
+                    keyExtractor={(mod, idx) => `${mod.modalidad}-${idx}`}
+                    style={{ maxHeight: 300 }}
+                    initialNumToRender={15}
+                    maxToRenderPerBatch={15}
+                    windowSize={5}
+                    renderItem={({ item: mod }) => (
                       <TouchableOpacity
-                        key={`${mod.modalidad}-${idx}`}
                         style={styles.modalItemRowClickable}
                         activeOpacity={0.7}
                         onPress={() => handleSelectModalidad(mod.modalidad)}
                       >
                         <ThemedText style={styles.modalItemLabelLink} numberOfLines={1}>
-                          • {mod.modalidad} <Ionicons name="chevron-forward" size={11} color={MJM_BLUE} />
+                          • {mod.modalidad}{" "}
+                          <Ionicons
+                            name="chevron-forward"
+                            size={11}
+                            color={MJM_BLUE}
+                          />
                         </ThemedText>
-                        <ThemedText style={styles.modalItemVal}>{mod.cantidad} reg.</ThemedText>
+                        <ThemedText style={styles.modalItemVal}>
+                          {mod.cantidad} reg.
+                        </ThemedText>
                       </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                    )}
+                  />
                 ) : (
-                  <ThemedText style={styles.emptyText}>No hay modalidades registradas para motos.</ThemedText>
+                  <ThemedText style={styles.emptyText}>
+                    No hay modalidades registradas para motos.
+                  </ThemedText>
                 )
               ) : (
                 <View>
-                  <TouchableOpacity style={styles.backButton} onPress={() => setSelectedModalidad(null)}>
+                  <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => setSelectedModalidad(null)}
+                  >
                     <Ionicons name="arrow-back" size={14} color={MJM_BLUE} />
-                    <ThemedText style={styles.backButtonText}>Volver a modalidades</ThemedText>
+                    <ThemedText style={styles.backButtonText}>
+                      Volver a modalidades
+                    </ThemedText>
                   </TouchableOpacity>
 
                   {loadingDirecciones ? (
-                    <ActivityIndicator size="small" color={MJM_BLUE} style={{ marginVertical: 30 }} />
+                    <ActivityIndicator
+                      size="small"
+                      color={MJM_BLUE}
+                      style={{ marginVertical: 30 }}
+                    />
                   ) : direccionesModalidad.length > 0 ? (
-                    <ScrollView style={{ maxHeight: 250 }} showsVerticalScrollIndicator={false}>
-                      {direccionesModalidad.map((item, idx) => (
-                        <View key={idx} style={styles.modalItemRow}>
+                    <FlatList
+                      data={direccionesModalidad}
+                      keyExtractor={(item, idx) =>
+                        `${item.DIRECCIÓN_CONSOLIDADA}-${idx}`
+                      }
+                      style={{ maxHeight: 250 }}
+                      initialNumToRender={15}
+                      maxToRenderPerBatch={15}
+                      windowSize={5}
+                      renderItem={({ item }) => (
+                        <View style={styles.modalItemRow}>
                           <ThemedText style={styles.modalItemLabel} numberOfLines={2}>
                             📍 {item.DIRECCIÓN_CONSOLIDADA}
                           </ThemedText>
-                          <ThemedText style={styles.modalItemVal}>{item.CANTIDAD} reg.</ThemedText>
+                          <ThemedText style={styles.modalItemVal}>
+                            {item.CANTIDAD} reg.
+                          </ThemedText>
                         </View>
-                      ))}
-                    </ScrollView>
+                      )}
+                    />
                   ) : (
-                    <ThemedText style={styles.emptyText}>No hay direcciones registradas.</ThemedText>
+                    <ThemedText style={styles.emptyText}>
+                      No hay direcciones registradas.
+                    </ThemedText>
                   )}
                 </View>
               )}
 
-              <TouchableOpacity style={styles.modalCloseFooter} onPress={cerrarModal}>
-                <ThemedText style={styles.modalCloseFooterText}>Cerrar</ThemedText>
+              <TouchableOpacity
+                style={styles.modalCloseFooter}
+                onPress={cerrarModal}
+              >
+                <ThemedText style={styles.modalCloseFooterText}>
+                  Cerrar
+                </ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -470,7 +599,7 @@ const styles = StyleSheet.create({
   },
   dashboardCard: {
     flex: 1,
-    minWidth: 300,
+    minWidth: 260,
     backgroundColor: "white",
     borderRadius: 16,
     padding: 16,
@@ -598,7 +727,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   modalItemLabel: {
-
+    fontSize: 12,
     fontWeight: "600",
     color: "#334155",
     flex: 1,
@@ -626,7 +755,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
-  turnoBadge: { flexDirection: "row", alignItems: "center", backgroundColor: MJM_BLUE + "12", paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, alignSelf: "flex-start", marginTop: 4 },
-  turnoBadgeText: { fontSize: 11, fontWeight: "700", color: MJM_BLUE, marginLeft: 4 },
+  turnoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: MJM_BLUE + "12",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  turnoBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: MJM_BLUE,
+    marginLeft: 4,
+  },
   modalCloseFooterText: { color: "white", fontSize: 12, fontWeight: "bold" },
 });

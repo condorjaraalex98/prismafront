@@ -61,7 +61,7 @@ const ACTIVIDADES_OPERATIVAS = [
 const OTRAS_ACTIVIDADES = [
   {
     id: "6",
-    nombre: "OTRAS NOVEDADES",
+    nombre: "OCURRENCIA GENERAL",
     ruta: "/general",
     icono: "document-text",
     color: "#0056b3",
@@ -213,7 +213,7 @@ export default function PrincipalScreen() {
         
         <ThemedText style={styles.cardSubtitle}>
           {item.id === 'fin_de_servicio' || item.nombre.includes('Fin') 
-            ? '30 minutos de tolerancia, solo motorizados'
+            ? '30 minutos de tolerancia, moto, camioneta obligatorio'
             : '30 minutos de tolerancia'}
         </ThemedText>
       </View>

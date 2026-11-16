@@ -6,7 +6,6 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   ImageBackground,
   KeyboardAvoidingView,
   Modal,
@@ -26,16 +25,24 @@ export const API_URL =
 const BACKGROUND_IMAGE =
   "https://www.munijesusmaria.gob.pe/wp-content/uploads/2025/01/WhatsApp-Image-2025-01-20-at-10.19.12-AM.jpeg";
 
+const mostrarAlerta = (titulo: string, mensaje: string) => {
+  if (Platform.OS === "web") {
+    window.alert(`${titulo}\n\n${mensaje}`);
+  } else {
+    Alert.alert(titulo, mensaje);
+  }
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const { login } = useAuth();
-  
-  // Hook reactivo para obtener siempre las dimensiones actualizadas de la ventana
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const [showSupport, setShowSupport] = useState(false);
   const [usuario, setUsuario] = useState("");
   const [contrasena, setContrasena] = useState("");
+  const [loadingLogin, setLoadingLogin] = useState(false);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [passActual, setPassActual] = useState("");
   const [nuevaPass, setNuevaPass] = useState("");
@@ -43,56 +50,87 @@ export default function HomeScreen() {
   const [loadingPass, setLoadingPass] = useState(false);
 
   const handleLogin = async () => {
-    if (!usuario || !contrasena)
-      return Alert.alert("Aviso", "Ingresa tus credenciales");
+    if (loadingLogin) return;
+    if (!usuario.trim() || !contrasena) {
+      return mostrarAlerta("Aviso", "Ingresa tus credenciales");
+    }
+
+    setLoadingLogin(true);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
 
     try {
       const response = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, contrasena }),
+        body: JSON.stringify({ usuario: usuario.trim(), contrasena }),
+        signal: controller.signal,
       });
 
       const data = await response.json();
 
-      if (response.ok) {
-        // 1. Guardar la sesión en el contexto global
+    if (response.ok) {
         login(data);
 
-        // 2. Evaluamos ancho en tiempo real (móvil vs web de escritorio)
-        const currentWidth = Dimensions.get("window").width || windowWidth;
-        const esCelular = Platform.OS !== "web" || currentWidth < 768;
+        const rol = Number(data.id_rol);
+        const esAppMovil = Platform.OS !== "web";
 
-        // 3. Redirección sincronizada
         setTimeout(() => {
-          if (esCelular) {
-            // Celular / App Nativa / Web en móvil -> / (tabs) / principal
+          // 🚀 1. Redirección automática para Drones (Rol 4)
+          if (rol === 4) {
+            router.replace({
+              pathname: "/principalDron",
+              params: { idUsuario: data.id },
+            });
+            return;
+          }
+
+          // 🚀 2. Redirección automática para Movilidad Urbana (Rol 5)
+          if (rol === 5) {
+            router.replace({
+              pathname: "/principalmovilidad",
+              params: { idUsuario: data.id },
+            });
+            return;
+          }
+
+          // 3. Comportamiento normal para el resto de roles según plataforma
+          if (esAppMovil) {
             router.replace({
               pathname: "/(tabs)/principal",
               params: { idUsuario: data.id },
             });
           } else {
-            // Web en PC / Pantalla ancha -> / cecomdoceh (Coincide con tu Sidebar)
             router.replace({
               pathname: "/cecomdoceh",
               params: { idUsuario: data.id },
             });
           }
         }, 50);
-
       } else {
-        Alert.alert("Error", data.message);
+        mostrarAlerta("Error", data.message || "Credenciales incorrectas");
       }
-    } catch (e) {
-      Alert.alert("Error", "Servidor no disponible");
+    } catch (e: any) {
+      mostrarAlerta(
+        "Error",
+        e?.name === "AbortError"
+          ? "El servidor tardó demasiado en responder"
+          : "Servidor no disponible"
+      );
+    } finally {
+      clearTimeout(timer);
+      setLoadingLogin(false);
     }
   };
 
   const handleUpdatePassword = async () => {
-    if (!usuario || !passActual || !nuevaPass)
-      return Alert.alert("Aviso", "Completa los campos");
-    if (nuevaPass !== confirmarPass)
-      return Alert.alert("Error", "Las claves no coinciden");
+    if (loadingPass) return;
+    if (!usuario.trim() || !passActual || !nuevaPass) {
+      return mostrarAlerta("Aviso", "Completa los campos");
+    }
+    if (nuevaPass !== confirmarPass) {
+      return mostrarAlerta("Error", "Las claves no coinciden");
+    }
 
     setLoadingPass(true);
     try {
@@ -100,23 +138,23 @@ export default function HomeScreen() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          usuario,
+          usuario: usuario.trim(),
           pass_actual: passActual,
           nueva_pass: nuevaPass,
         }),
       });
       if (response.ok) {
-        Alert.alert("Éxito", "Contraseña actualizada.");
+        mostrarAlerta("Éxito", "Contraseña actualizada.");
         setModalVisible(false);
         setPassActual("");
         setNuevaPass("");
         setConfirmarPass("");
       } else {
         const d = await response.json();
-        Alert.alert("Error", d.message);
+        mostrarAlerta("Error", d.message || "No se pudo actualizar");
       }
-    } catch (e) {
-      Alert.alert("Error", "Error de red");
+    } catch {
+      mostrarAlerta("Error", "Error de red");
     } finally {
       setLoadingPass(false);
     }
@@ -124,7 +162,6 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.mainContainer}>
-      {/* FONDO DE PANTALLA */}
       <ImageBackground
         source={{ uri: BACKGROUND_IMAGE }}
         style={styles.backgroundImage}
@@ -138,8 +175,8 @@ export default function HomeScreen() {
             <ScrollView
               contentContainerStyle={styles.scrollContainer}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              {/* TARJETA DE LOGIN */}
               <View style={styles.loginCard}>
                 <View style={styles.logoContainer}>
                   <Image
@@ -178,16 +215,20 @@ export default function HomeScreen() {
                   />
 
                   <TouchableOpacity
-                    style={styles.button}
+                    style={[styles.button, loadingLogin && { opacity: 0.7 }]}
                     onPress={handleLogin}
+                    disabled={loadingLogin}
                     activeOpacity={0.8}
                   >
-                    <ThemedText style={styles.buttonText}>
-                      INGRESAR AL SISTEMA
-                    </ThemedText>
+                    {loadingLogin ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <ThemedText style={styles.buttonText}>
+                        INGRESAR AL SISTEMA
+                      </ThemedText>
+                    )}
                   </TouchableOpacity>
 
-                  {/* Botón para cambiar contraseña */}
                   <TouchableOpacity
                     onPress={() => setModalVisible(true)}
                     style={styles.forgotPassword}
@@ -197,15 +238,15 @@ export default function HomeScreen() {
                     </ThemedText>
                   </TouchableOpacity>
 
-                  {/* Botón de Soporte Técnico */}
                   <TouchableOpacity
                     onPress={() => setShowSupport(!showSupport)}
                     style={styles.forgotPassword}
                   >
-                    <ThemedText style={styles.supportName}>Soporte técnico</ThemedText>
+                    <ThemedText style={styles.supportName}>
+                      Soporte técnico
+                    </ThemedText>
                   </TouchableOpacity>
 
-                  {/* Datos de soporte */}
                   {showSupport && (
                     <View style={styles.supportContainer}>
                       <ThemedText style={styles.supportName}>
@@ -223,7 +264,6 @@ export default function HomeScreen() {
         </View>
       </ImageBackground>
 
-      {/* MODAL DE CAMBIO DE CONTRASEÑA */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View
@@ -302,6 +342,7 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={[styles.modalBtn, { backgroundColor: MJM_BLUE }]}
                   onPress={handleUpdatePassword}
+                  disabled={loadingPass}
                 >
                   {loadingPass ? (
                     <ActivityIndicator color="#fff" />

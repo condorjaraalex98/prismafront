@@ -1,10 +1,12 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,11 +15,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
 const LIMIT_INICIAL = 5;
-
-// IDs de origen fijos solicitados
 const ORIGENES_PERMITIDOS = [1, 5, 6, 7, 11];
 
 interface EstadisticaItem {
@@ -38,13 +39,10 @@ interface DireccionItem {
 }
 
 interface CardProps {
-  titulo: string;
   datos: EstadisticaItem[];
   colorTema: string;
-  icono: keyof typeof Ionicons.glyphMap;
-  totalGeneral: number;
   showAll: boolean;
-  setShowAll: React.Dispatch<React.SetStateAction<boolean>>;
+  onToggleShowAll: () => void;
   isUserCard: boolean;
   loading: boolean;
   onSelectUser?: (id: number | string, nombre: string) => void;
@@ -56,28 +54,21 @@ const obtenerTextoTurnoActual = (): string => {
   const minutos = ahora.getMinutes();
   const tiempoMinutos = hora * 60 + minutos;
 
-  // 07:00 (420 min) hasta las 14:59 (899 min)
   if (tiempoMinutos >= 420 && tiempoMinutos < 900) {
     return "Turno Mañana (07:00 - 14:59)";
-  } 
-  // 15:00 (900 min) hasta las 21:59 (1319 min)
-  else if (tiempoMinutos >= 900 && tiempoMinutos < 1320) {
+  } else if (tiempoMinutos >= 900 && tiempoMinutos < 1320) {
     return "Turno Tarde (15:00 - 21:59)";
-  } 
-  // 22:00 en adelante hasta las 06:59
-  else {
+  } else {
     return "Turno Noche (22:00 - 06:59)";
   }
 };
+
 const DashboardCard = React.memo(
   ({
-    titulo,
     datos,
     colorTema,
-    icono,
-    totalGeneral,
     showAll,
-    setShowAll,
+    onToggleShowAll,
     isUserCard,
     loading,
     onSelectUser,
@@ -93,11 +84,14 @@ const DashboardCard = React.memo(
 
     return (
       <View style={[styles.dashboardCard, { borderColor: colorTema + "25" }]}>
-       
         <View style={styles.divider} />
 
         {loading ? (
-          <ActivityIndicator size="small" color={colorTema} style={{ marginVertical: 25 }} />
+          <ActivityIndicator
+            size="small"
+            color={colorTema}
+            style={{ marginVertical: 25 }}
+          />
         ) : datos.length > 0 ? (
           <>
             {datosVisibles.map((item, index) => {
@@ -108,7 +102,7 @@ const DashboardCard = React.memo(
               );
 
               return (
-                <View key={`${item.label}-${index}`} style={styles.barGroup}>
+                <View key={`${item.id ?? item.label}-${index}`} style={styles.barGroup}>
                   {isUserCard ? (
                     <TouchableOpacity
                       style={styles.labelRowClickable}
@@ -119,10 +113,16 @@ const DashboardCard = React.memo(
                         {index + 1}. {item.label}
                       </ThemedText>
                       <View style={styles.badgeItemValue}>
-                        <ThemedText style={[styles.itemValueText, { color: colorTema }]}>
+                        <ThemedText
+                          style={[styles.itemValueText, { color: colorTema }]}
+                        >
                           {valNum} reg.
                         </ThemedText>
-                        <Ionicons name="chevron-forward" size={11} color={colorTema} />
+                        <Ionicons
+                          name="chevron-forward"
+                          size={11}
+                          color={colorTema}
+                        />
                       </View>
                     </TouchableOpacity>
                   ) : (
@@ -153,11 +153,13 @@ const DashboardCard = React.memo(
             {hayMasDatos && (
               <TouchableOpacity
                 style={[styles.verMasButton, { borderColor: colorTema + "30" }]}
-                onPress={() => setShowAll((prev) => !prev)}
+                onPress={onToggleShowAll}
                 activeOpacity={0.7}
               >
                 <ThemedText style={[styles.verMasText, { color: colorTema }]}>
-                  {showAll ? "Ver menos" : `Ver más (${datos.length - LIMIT_INICIAL} ocultos)`}
+                  {showAll
+                    ? "Ver menos"
+                    : `Ver más (${datos.length - LIMIT_INICIAL} ocultos)`}
                 </ThemedText>
                 <Ionicons
                   name={showAll ? "chevron-up" : "chevron-down"}
@@ -168,7 +170,9 @@ const DashboardCard = React.memo(
             )}
           </>
         ) : (
-          <ThemedText style={styles.emptyText}>No hay registros en este origen.</ThemedText>
+          <ThemedText style={styles.emptyText}>
+            No hay registros en este origen.
+          </ThemedText>
         )}
       </View>
     );
@@ -177,7 +181,7 @@ const DashboardCard = React.memo(
 
 export default function GraficoEstadisticasScreen() {
   const [datosPorOrigen, setDatosPorOrigen] = useState<
-    Record<number, { por_usuario: EstadisticaItem[]; por_modalidad: EstadisticaItem[] }>
+    Record<number, EstadisticaItem[]>
   >({});
   const [nombresOrigenes, setNombresOrigenes] = useState<Record<number, string>>({});
 
@@ -185,36 +189,58 @@ export default function GraficoEstadisticasScreen() {
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [showAllState, setShowAllState] = useState<Record<string, boolean>>({});
+  const [showAllState, setShowAllState] = useState<Record<number, boolean>>({});
 
-  // Estados del Modal y Navegación
   const [selectedOrigenId, setSelectedOrigenId] = useState<number | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState<number | string | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | string | null>(
+    null
+  );
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [modalidadesUsuario, setModalidadesUsuario] = useState<ModalidadPorUsuario[]>([]);
-  const [loadingUserModalidades, setLoadingUserModalidades] = useState<boolean>(false);
+  const [modalidadesUsuario, setModalidadesUsuario] = useState<
+    ModalidadPorUsuario[]
+  >([]);
+  const [loadingUserModalidades, setLoadingUserModalidades] =
+    useState<boolean>(false);
 
-  const [selectedModalidad, setSelectedModalidad] = useState<string | null>(null);
-  const [direccionesModalidad, setDireccionesModalidad] = useState<DireccionItem[]>([]);
+  const [selectedModalidad, setSelectedModalidad] = useState<string | null>(
+    null
+  );
+  const [direccionesModalidad, setDireccionesModalidad] = useState<
+    DireccionItem[]
+  >([]);
   const [loadingDirecciones, setLoadingDirecciones] = useState<boolean>(false);
 
-const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoActual());
+  const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoActual());
 
-useEffect(() => {
-  // Actualizar el estado al montar el componente
-  setTextoTurno(obtenerTextoTurnoActual());
+  const isMountedRef = useRef(true);
+  const statsAbortRef = useRef<AbortController | null>(null);
+  const modalAbortRef = useRef<AbortController | null>(null);
 
-  // Verificar la hora cada 30 segundos
-  const interval = setInterval(() => {
-    setTextoTurno(obtenerTextoTurnoActual());
-  }, 30000);
-
-  return () => clearInterval(interval);
-}, []);
   useEffect(() => {
-    fetch(`${API_BASE_URL}/ocurrencias/catalogos-filtros`)
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      statsAbortRef.current?.abort();
+      modalAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    setTextoTurno(obtenerTextoTurnoActual());
+    const interval = setInterval(() => {
+      setTextoTurno(obtenerTextoTurnoActual());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_BASE_URL}/ocurrencias/catalogos-filtros`, {
+      signal: controller.signal,
+    })
       .then((res) => res.json())
       .then((data) => {
+        if (!isMountedRef.current) return;
         if (data.success && data.origenes) {
           const mapaNombres: Record<number, string> = {};
           data.origenes.forEach((item: any) => {
@@ -226,39 +252,56 @@ useEffect(() => {
           setNombresOrigenes(mapaNombres);
         }
       })
-      .catch((err) => console.error("Error cargando catálogos de filtros", err));
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Error cargando catálogos de filtros", err);
+        }
+      });
+
+    return () => controller.abort();
   }, []);
 
   const fetchTodasLasEstadisticas = useCallback(async () => {
+    statsAbortRef.current?.abort();
+    const controller = new AbortController();
+    statsAbortRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), 15000);
+
     setErrorMessage(null);
     try {
-      const promesas = ORIGENES_PERMITIDOS.map(async (idOrigen) => {
-        const response = await fetch(`${API_BASE_URL}/ocurrencias/estadisticas?id_origen=${idOrigen}`);
-        if (!response.ok) throw new Error(`Error en origen ${idOrigen}`);
-        const data = await response.json();
-        return {
-          idOrigen,
-          por_usuario: data.por_usuario || [],
-          por_modalidad: data.por_modalidad || [],
-        };
-      });
+      const resultados = await Promise.all(
+        ORIGENES_PERMITIDOS.map(async (idOrigen) => {
+          const response = await fetch(
+            `${API_BASE_URL}/ocurrencias/estadisticas?id_origen=${idOrigen}&solo_usuarios=1`,
+            { signal: controller.signal }
+          );
+          if (!response.ok) throw new Error(`Error en origen ${idOrigen}`);
+          const data = await response.json();
+          return {
+            idOrigen,
+            por_usuario: (data.por_usuario || []) as EstadisticaItem[],
+          };
+        })
+      );
 
-      const resultados = await Promise.all(promesas);
-      const nuevoMapa: Record<number, { por_usuario: EstadisticaItem[]; por_modalidad: EstadisticaItem[] }> = {};
-      resultados.forEach((res) => {
-        nuevoMapa[res.idOrigen] = {
-          por_usuario: res.por_usuario,
-          por_modalidad: res.por_modalidad,
-        };
-      });
-
+      if (!isMountedRef.current) return;
+      const nuevoMapa: Record<number, EstadisticaItem[]> = {};
+      for (const res of resultados) {
+        nuevoMapa[res.idOrigen] = res.por_usuario;
+      }
       setDatosPorOrigen(nuevoMapa);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === "AbortError") return;
       console.error("Error al cargar estadísticas:", error);
-      setErrorMessage("No se pudieron actualizar los datos del servidor.");
+      if (isMountedRef.current) {
+        setErrorMessage("No se pudieron actualizar los datos del servidor.");
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      clearTimeout(timer);
+      if (isMountedRef.current && statsAbortRef.current === controller) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -266,61 +309,110 @@ useEffect(() => {
     fetchTodasLasEstadisticas();
   }, [fetchTodasLasEstadisticas]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchTodasLasEstadisticas();
-  };
+  }, [fetchTodasLasEstadisticas]);
 
-  const handleSelectUser = useCallback(async (idOrigen: number, idUsuario: number | string, nombreUsuario: string) => {
-    setSelectedOrigenId(idOrigen);
-    setSelectedUserId(idUsuario);
-    setSelectedUser(nombreUsuario);
-    setSelectedModalidad(null);
-    setLoadingUserModalidades(true);
-    try {
-      const url = `${API_BASE_URL}/ocurrencias/modalidades-por-usuario?id_usuario=${idUsuario}&id_origen=${idOrigen}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Error obteniendo detalles");
-      const data = await response.json();
-      setModalidadesUsuario(data.modalidades || []);
-    } catch (error) {
-      console.error("Error:", error);
-      setModalidadesUsuario([]);
-    } finally {
-      setLoadingUserModalidades(false);
-    }
-  }, []);
+  const handleSelectUser = useCallback(
+    async (
+      idOrigen: number,
+      idUsuario: number | string,
+      nombreUsuario: string
+    ) => {
+      modalAbortRef.current?.abort();
+      const controller = new AbortController();
+      modalAbortRef.current = controller;
 
-  const handleSelectModalidad = useCallback(async (nombreModalidad: string) => {
-    if (!selectedUserId || selectedOrigenId === null) return;
-    setSelectedModalidad(nombreModalidad);
-    setLoadingDirecciones(true);
-    try {
-      const url = `${API_BASE_URL}/ocurrencias/detalle-por-modalidad?id_usuario=${selectedUserId}&modalidad=${encodeURIComponent(nombreModalidad)}&id_origen=${selectedOrigenId}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Error obteniendo direcciones");
-      const data = await response.json();
-      setDireccionesModalidad(data.direcciones || []);
-    } catch (error) {
-      console.error("Error:", error);
-      setDireccionesModalidad([]);
-    } finally {
-      setLoadingDirecciones(false);
-    }
-  }, [selectedUserId, selectedOrigenId]);
+      setSelectedOrigenId(idOrigen);
+      setSelectedUserId(idUsuario);
+      setSelectedUser(nombreUsuario);
+      setSelectedModalidad(null);
+      setLoadingUserModalidades(true);
 
-  const cerrarModal = () => {
+      try {
+        const url = `${API_BASE_URL}/ocurrencias/modalidades-por-usuario?id_usuario=${encodeURIComponent(
+          String(idUsuario)
+        )}&id_origen=${idOrigen}`;
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("Error obteniendo detalles");
+        const data = await response.json();
+        if (isMountedRef.current) {
+          setModalidadesUsuario(data.modalidades || []);
+        }
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        console.error("Error:", error);
+        if (isMountedRef.current) setModalidadesUsuario([]);
+      } finally {
+        if (isMountedRef.current && modalAbortRef.current === controller) {
+          setLoadingUserModalidades(false);
+        }
+      }
+    },
+    []
+  );
+
+  const handleSelectModalidad = useCallback(
+    async (nombreModalidad: string) => {
+      if (!selectedUserId || selectedOrigenId === null) return;
+      modalAbortRef.current?.abort();
+      const controller = new AbortController();
+      modalAbortRef.current = controller;
+
+      setSelectedModalidad(nombreModalidad);
+      setLoadingDirecciones(true);
+
+      try {
+        const url = `${API_BASE_URL}/ocurrencias/detalle-por-modalidad?id_usuario=${encodeURIComponent(
+          String(selectedUserId)
+        )}&modalidad=${encodeURIComponent(
+          nombreModalidad
+        )}&id_origen=${selectedOrigenId}`;
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("Error obteniendo direcciones");
+        const data = await response.json();
+        if (isMountedRef.current) {
+          setDireccionesModalidad(data.direcciones || []);
+        }
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        console.error("Error:", error);
+        if (isMountedRef.current) setDireccionesModalidad([]);
+      } finally {
+        if (isMountedRef.current && modalAbortRef.current === controller) {
+          setLoadingDirecciones(false);
+        }
+      }
+    },
+    [selectedUserId, selectedOrigenId]
+  );
+
+  const cerrarModal = useCallback(() => {
+    modalAbortRef.current?.abort();
     setSelectedOrigenId(null);
     setSelectedUserId(null);
     setSelectedUser(null);
     setSelectedModalidad(null);
     setModalidadesUsuario([]);
     setDireccionesModalidad([]);
-  };
+  }, []);
 
-  const toggleShowAll = (key: string) => {
-    setShowAllState((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  const toggleShowAll = useCallback((idOrigen: number) => {
+    setShowAllState((prev) => ({ ...prev, [idOrigen]: !prev[idOrigen] }));
+  }, []);
+
+  const totalesPorOrigen = useMemo(() => {
+    const res: Record<number, number> = {};
+    for (const idOrigen of ORIGENES_PERMITIDOS) {
+      const lista = datosPorOrigen[idOrigen] || [];
+      res[idOrigen] = lista.reduce(
+        (acc, item) => acc + Number(item.value || 0),
+        0
+      );
+    }
+    return res;
+  }, [datosPorOrigen]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
@@ -329,21 +421,35 @@ useEffect(() => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={MJM_BLUE} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={MJM_BLUE}
+            />
           }
         >
           {/* CABECERA Y TURNO */}
           <View style={styles.headerContainer}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <ThemedText style={styles.mainTitle}>DASHBOARD DE ESTADÍSTICAS</ThemedText>
+              <ThemedText style={styles.mainTitle}>
+                DASHBOARD DE ESTADÍSTICAS
+              </ThemedText>
               <View style={styles.turnoBadge}>
                 <Ionicons name="time-outline" size={13} color={MJM_BLUE} />
-                <ThemedText style={styles.turnoBadgeText}>{textoTurno}</ThemedText>
+                <ThemedText style={styles.turnoBadgeText}>
+                  {textoTurno}
+                </ThemedText>
               </View>
             </View>
-            <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={onRefresh}
+              activeOpacity={0.8}
+            >
               <Ionicons name="refresh" size={15} color="white" />
-              <ThemedText style={styles.refreshButtonText}>Actualizar</ThemedText>
+              <ThemedText style={styles.refreshButtonText}>
+                Actualizar
+              </ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -356,35 +462,35 @@ useEffect(() => {
           {/* CONTENEDOR GRID DE LOS 5 ORÍGENES */}
           <View style={styles.dashboardGrid}>
             {ORIGENES_PERMITIDOS.map((idOrigen) => {
-              const dataOrigen = datosPorOrigen[idOrigen] || { por_usuario: [], por_modalidad: [] };
-              const nombreOrigen = nombresOrigenes[idOrigen] || `Origen ${idOrigen}`;
-              const totalUsuarios = dataOrigen.por_usuario.reduce((acc, item) => acc + Number(item.value || 0), 0);
-              const keyUsuarios = `${idOrigen}-usuarios`;
+              const listaUsuarios = datosPorOrigen[idOrigen] || [];
+              const nombreOrigen =
+                nombresOrigenes[idOrigen] || `Origen ${idOrigen}`;
+              const totalUsuarios = totalesPorOrigen[idOrigen] || 0;
 
               return (
                 <View key={idOrigen} style={styles.origenColumnGroup}>
-                  {/* Encabezado del Origen con Badge de Total integrado */}
                   <View style={styles.origenHeaderBanner}>
                     <ThemedText style={styles.origenHeaderText} numberOfLines={1}>
                       {nombreOrigen}
                     </ThemedText>
                     <View style={styles.origenBadgeCount}>
-                      <ThemedText style={styles.origenBadgeCountText}>{totalUsuarios}</ThemedText>
+                      <ThemedText style={styles.origenBadgeCountText}>
+                        {totalUsuarios}
+                      </ThemedText>
                     </View>
                   </View>
 
                   <View style={styles.cardsSubGrid}>
                     <DashboardCard
-                      titulo=""
-                      datos={dataOrigen.por_usuario}
+                      datos={listaUsuarios}
                       colorTema={MJM_BLUE}
-                      icono="people-outline"
-                      totalGeneral={totalUsuarios}
-                      showAll={!!showAllState[keyUsuarios]}
-                      setShowAll={() => toggleShowAll(keyUsuarios)}
+                      showAll={!!showAllState[idOrigen]}
+                      onToggleShowAll={() => toggleShowAll(idOrigen)}
                       isUserCard={true}
                       loading={loading}
-                      onSelectUser={(idUsr, nomUsr) => handleSelectUser(idOrigen, idUsr, nomUsr)}
+                      onSelectUser={(idUsr, nomUsr) =>
+                        handleSelectUser(idOrigen, idUsr, nomUsr)
+                      }
                     />
                   </View>
                 </View>
@@ -394,13 +500,21 @@ useEffect(() => {
         </ScrollView>
 
         {/* MODAL DE DESGLOSE */}
-        <Modal visible={!!selectedUser} animationType="fade" transparent={true}>
+        <Modal
+          visible={!!selectedUser}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={cerrarModal}
+        >
           <View style={styles.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={cerrarModal} />
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
                   <ThemedText style={styles.modalTitle}>
-                    {selectedModalidad ? "DIRECCIONES ASOCIADAS" : "DESGLOSE POR PERSONAL"}
+                    {selectedModalidad
+                      ? "DIRECCIONES ASOCIADAS"
+                      : "DESGLOSE POR PERSONAL"}
                   </ThemedText>
                   <ThemedText style={styles.modalSubtitle} numberOfLines={1}>
                     {selectedModalidad ? selectedModalidad : selectedUser}
@@ -415,57 +529,112 @@ useEffect(() => {
 
               {!selectedModalidad ? (
                 loadingUserModalidades ? (
-                  <ActivityIndicator size="small" color={MJM_BLUE} style={{ marginVertical: 30 }} />
+                  <ActivityIndicator
+                    size="small"
+                    color={MJM_BLUE}
+                    style={{ marginVertical: 30 }}
+                  />
                 ) : modalidadesUsuario.length > 0 ? (
-                  <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
-                    {modalidadesUsuario.map((mod, idx) => (
+                  <FlatList
+                    data={modalidadesUsuario}
+                    keyExtractor={(mod, idx) => `${mod.modalidad}-${idx}`}
+                    style={{ maxHeight: 300 }}
+                    initialNumToRender={15}
+                    maxToRenderPerBatch={15}
+                    windowSize={5}
+                    renderItem={({ item: mod }) => (
                       <TouchableOpacity
-                        key={`${mod.modalidad}-${idx}`}
                         style={styles.modalItemRowClickable}
                         activeOpacity={0.7}
                         onPress={() => handleSelectModalidad(mod.modalidad)}
                       >
-                        <ThemedText style={styles.modalItemLabelLink} numberOfLines={1}>
+                        <ThemedText
+                          style={styles.modalItemLabelLink}
+                          numberOfLines={1}
+                        >
                           • {mod.modalidad}
                         </ThemedText>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <ThemedText style={styles.modalItemVal}>{mod.cantidad} reg.</ThemedText>
-                          <Ionicons name="chevron-forward" size={12} color={MJM_BLUE} />
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <ThemedText style={styles.modalItemVal}>
+                            {mod.cantidad} reg.
+                          </ThemedText>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={12}
+                            color={MJM_BLUE}
+                          />
                         </View>
                       </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                    )}
+                  />
                 ) : (
-                  <ThemedText style={styles.emptyText}>No hay modalidades registradas.</ThemedText>
+                  <ThemedText style={styles.emptyText}>
+                    No hay modalidades registradas.
+                  </ThemedText>
                 )
               ) : (
                 <View>
-                  <TouchableOpacity style={styles.backButton} onPress={() => setSelectedModalidad(null)}>
+                  <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => setSelectedModalidad(null)}
+                  >
                     <Ionicons name="arrow-back" size={14} color={MJM_BLUE} />
-                    <ThemedText style={styles.backButtonText}>Volver a modalidades</ThemedText>
+                    <ThemedText style={styles.backButtonText}>
+                      Volver a modalidades
+                    </ThemedText>
                   </TouchableOpacity>
 
                   {loadingDirecciones ? (
-                    <ActivityIndicator size="small" color={MJM_BLUE} style={{ marginVertical: 30 }} />
+                    <ActivityIndicator
+                      size="small"
+                      color={MJM_BLUE}
+                      style={{ marginVertical: 30 }}
+                    />
                   ) : direccionesModalidad.length > 0 ? (
-                    <ScrollView style={{ maxHeight: 250 }} showsVerticalScrollIndicator={false}>
-                      {direccionesModalidad.map((item, idx) => (
-                        <View key={idx} style={styles.modalItemRow}>
-                          <ThemedText style={styles.modalItemLabel} numberOfLines={2}>
+                    <FlatList
+                      data={direccionesModalidad}
+                      keyExtractor={(item, idx) =>
+                        `${item.DIRECCIÓN_CONSOLIDADA}-${idx}`
+                      }
+                      style={{ maxHeight: 250 }}
+                      initialNumToRender={15}
+                      maxToRenderPerBatch={15}
+                      windowSize={5}
+                      renderItem={({ item }) => (
+                        <View style={styles.modalItemRow}>
+                          <ThemedText
+                            style={styles.modalItemLabel}
+                            numberOfLines={2}
+                          >
                             📍 {item.DIRECCIÓN_CONSOLIDADA}
                           </ThemedText>
-                          <ThemedText style={styles.modalItemVal}>{item.CANTIDAD} reg.</ThemedText>
+                          <ThemedText style={styles.modalItemVal}>
+                            {item.CANTIDAD} reg.
+                          </ThemedText>
                         </View>
-                      ))}
-                    </ScrollView>
+                      )}
+                    />
                   ) : (
-                    <ThemedText style={styles.emptyText}>No hay direcciones registradas.</ThemedText>
+                    <ThemedText style={styles.emptyText}>
+                      No hay direcciones registradas.
+                    </ThemedText>
                   )}
                 </View>
               )}
 
-              <TouchableOpacity style={styles.modalCloseFooter} onPress={cerrarModal}>
-                <ThemedText style={styles.modalCloseFooterText}>Cerrar</ThemedText>
+              <TouchableOpacity
+                style={styles.modalCloseFooter}
+                onPress={cerrarModal}
+              >
+                <ThemedText style={styles.modalCloseFooterText}>
+                  Cerrar
+                </ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -489,7 +658,7 @@ const styles = StyleSheet.create({
   mainTitle: {
     fontSize: 16,
     fontWeight: "900",
-    color:  MJM_BLUE,
+    color: MJM_BLUE,
     letterSpacing: 0.5,
   },
   refreshButton: {
@@ -516,7 +685,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   errorText: { color: "#b91c1c", fontSize: 12, textAlign: "center" },
-  
+
   dashboardGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -556,7 +725,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     flex: 1,
   },
-  /* Badge de número total al lado del título del origen */
   origenBadgeCount: {
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     paddingHorizontal: 8,
@@ -584,14 +752,6 @@ const styles = StyleSheet.create({
     borderColor: "#f1f5f9",
     justifyContent: "flex-start",
   },
-  cardHeader: { flexDirection: "row", alignItems: "center" },
-  iconCircle: { padding: 8, borderRadius: 10 },
-  cardTitleText: {
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  cardTotalSub: { fontSize: 11, color: "#64748b", marginTop: 1 },
   divider: { height: 1, backgroundColor: "#f1f5f9", marginVertical: 10 },
   barGroup: { marginBottom: 12 },
   labelRow: {
@@ -748,18 +908,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
   },
-  turnoBadge: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    backgroundColor: MJM_BLUE + "12", 
-    paddingVertical: 5, 
-    paddingHorizontal: 10, 
-    borderRadius: 8, 
-    alignSelf: "flex-start", 
+  turnoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: MJM_BLUE + "12",
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignSelf: "flex-start",
     marginTop: 6,
     borderWidth: 1,
-    borderColor: MJM_BLUE + "25"
+    borderColor: MJM_BLUE + "25",
   },
-  turnoBadgeText: { fontSize: 11, fontWeight: "700", color: MJM_BLUE, marginLeft: 4 },
+  turnoBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: MJM_BLUE,
+    marginLeft: 4,
+  },
   modalCloseFooterText: { color: "white", fontSize: 12, fontWeight: "bold" },
 });

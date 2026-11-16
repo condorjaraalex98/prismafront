@@ -1,42 +1,65 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { DrawerContentScrollView } from "expo-router/drawer";
-import React, { useEffect, useState } from "react";
+import React, { memo, useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  LayoutAnimation,
   Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
-  UIManager,
   useWindowDimensions,
   View,
 } from "react-native";
 import { useAuth } from "../context/userContext";
 
-
-
 export const Sidebar = (props: any) => {
   const { userData, logout, loading } = useAuth();
-  const [isReady, setIsReady] = useState(false);
-
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const isMobile = width < 768;
-  const isWeb = !isMobile;
+
+  // ✅ Plataforma real (Web vs App Móvil) separada del tamaño de pantalla
+  const isWeb = Platform.OS === "web";
+  const isSmallScreen = width < 768;
+
   const activeRoute = props.state?.routes[props.state.index]?.name;
   const [openSection, setOpenSection] = useState<string | null>(null);
   const userRolId = userData?.id_rol ? Number(userData.id_rol) : null;
 
-  // Evita el error "Can't perform a React state update..."
-  useEffect(() => {
-    if (!loading) {
-      setIsReady(true);
-    }
-  }, [loading]);
+  const { isExpanded } = props;
+  const mostrarTexto = isExpanded || isSmallScreen;
 
-  if (loading || !isReady) {
+  const handleToggleSection = useCallback((sectionLabel: string) => {
+    setOpenSection((prev) => (prev === sectionLabel ? null : sectionLabel));
+  }, []);
+
+  const navigateTo = useCallback(
+    (route: string) => {
+      if (isSmallScreen && props.navigation?.closeDrawer) {
+        props.navigation.closeDrawer();
+        requestAnimationFrame(() => {
+          router.push(`/${route}` as any);
+        });
+      } else {
+        router.push(`/${route}` as any);
+      }
+    },
+    [isSmallScreen, props.navigation, router]
+  );
+
+  const handleLogout = useCallback(async () => {
+    if (
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      window.localStorage
+    ) {
+      window.localStorage.removeItem("prisma_catalogos_tele_v1");
+    }
+    await logout();
+    router.replace("/");
+  }, [logout, router]);
+
+  if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <ActivityIndicator size="large" color="#ffffff" />
@@ -44,28 +67,16 @@ export const Sidebar = (props: any) => {
     );
   }
 
-  const { isExpanded } = props;
-// ✅ CÓDIGO NUEVO
-const handleToggleSection = (sectionLabel: string) => {
-  setOpenSection(openSection === sectionLabel ? null : sectionLabel);
-};
-
-  const navigateTo = (route: string) => {
-    if (isMobile) {
-      props.navigation.closeDrawer();
-      requestAnimationFrame(() => {
-        router.push(`/${route}` as any);
-      });
-    } else {
-      router.push(`/${route}` as any);
-    }
-  };
+  const rol = userRolId as number;
+  const showMobileStats = rol === 1 || ((rol === 2 || rol === 3) && !isWeb);
+  const showWebStats = (rol === 1 || rol === 3) && isWeb;
+  const showOtros = showMobileStats || showWebStats;
 
   return (
     <View style={styles.container}>
       <DrawerContentScrollView {...props} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        {(isExpanded || isMobile) && (
+        {mostrarTexto && (
           <View style={styles.sidebarHeader}>
             <View style={styles.avatarLarge}>
               <Text style={styles.avatarLargeText}>
@@ -82,143 +93,121 @@ const handleToggleSection = (sectionLabel: string) => {
         )}
 
         <View style={styles.divider} />
+
+        {/* ✅ SOLO MÓVIL: Reg. Campo (/principal) */}
         {(userRolId === 3 || userRolId === 1) && !isWeb && (
+          <MenuOption
+            icon="home-outline"
+            label="Reg. Campo"
+            isActive={activeRoute === "principal"}
+            isExpanded={mostrarTexto}
+            onPress={() => navigateTo("principal")}
+          />
+        )}
 
-<MenuOption
-          icon="home-outline"
-              label="Principal"
-              isActive={activeRoute === "principal"}
-              isExpanded={isExpanded || isMobile}
-              onPress={() => navigateTo("principal")}
-            />
- )}
+        {/* ✅ SOLO WEB: Reg. CECOM (/cecomdoceh) */}
+        {(userRolId === 3 || userRolId === 1 || userRolId === 2) && isWeb && (
+          <MenuOption
+            icon="home-outline"
+            label="Reg. CECOM"
+            isActive={activeRoute === "cecomdoceh"}
+            isExpanded={mostrarTexto}
+            onPress={() => navigateTo("cecomdoceh")}
+          />
+        )}
 
- {(userRolId === 3 || userRolId === 1|| userRolId === 2) && isWeb && (
-   <>
-     <MenuOption
-       icon="home-outline"
-       label="Reg. CECOM"
-       isActive={activeRoute === "cecomdoceh"}
-       isExpanded={isExpanded || isMobile}
-       onPress={() => navigateTo("cecomdoceh")}
-     />
-     <MenuOption
-       icon="home-outline"
-       label="Reg. Campo"
-       isActive={activeRoute === "principal"}
-       isExpanded={isExpanded || isMobile}
-       onPress={() => navigateTo("principal")}
-     />
-   </>
- )}
+        {/* Collapsible: RANKING */}
+        {(showMobileStats || showWebStats) && (
+          <CollapsibleSection
+            icon="stats-chart-outline"
+            label="RANKING"
+            isExpanded={mostrarTexto}
+            isOpen={openSection === "Ranking"}
+            onToggle={() => handleToggleSection("Ranking")}
+          >
+            {showMobileStats && (
+              <>
+                <MenuOption
+                  icon="stats-chart-outline"
+                  label="Est. CAMPO"
+                  isActive={activeRoute === "rcampo"}
+                  isExpanded={true}
+                  onPress={() => navigateTo("rcampo")}
+                  isSubItem
+                />
+                <MenuOption
+                  icon="stats-chart-outline"
+                  label="Est. MOTO"
+                  isActive={activeRoute === "rcampomoto"}
+                  isExpanded={true}
+                  onPress={() => navigateTo("rcampomoto")}
+                  isSubItem
+                />
+              </>
+            )}
 
-       
-{(() => {
-  const rol = userRolId as number;
-  const showMobileStats = rol === 1 || ((rol === 2 || rol === 3) && !isWeb);
-  const showWebStats = (rol === 1 || rol === 3) && isWeb;
-  const showOtros = showMobileStats || showWebStats;
-
-  return (
-    <>
-      {/* Collapsible: RANKING */}
-      {(showMobileStats || showWebStats) && (
-        <CollapsibleSection
-          icon="location-outline"
-          label="RANKING"
-          isExpanded={isExpanded || isMobile}
-          isOpen={openSection === "Ranking"}
-          onToggle={() => handleToggleSection("Ranking")}
-        >
-          {/* Estadísticas para Móvil (o Rol 1 siempre) */}
-          {showMobileStats && (
-            <>
+            {showWebStats && (
               <MenuOption
                 icon="stats-chart-outline"
-                label="Est. CAMPO"
-                isActive={activeRoute === "rcampo"}
+                label="Est. CECOM"
+                isActive={activeRoute === "rcecom"}
                 isExpanded={true}
-                onPress={() => navigateTo("rcampo")}
+                onPress={() => navigateTo("rcecom")}
                 isSubItem
               />
-              <MenuOption
-                icon="stats-chart-outline"
-                label="Est. MOTO"
-                isActive={activeRoute === "rcampomoto"}
-                isExpanded={true}
-                onPress={() => navigateTo("rcampomoto")}
-                isSubItem
-              />
-            </>
-          )}
+            )}
+          </CollapsibleSection>
+        )}
 
-          {/* Estadística para Web (Roles 1 y 3) */}
-          {showWebStats && (
+        {/* Collapsible: OTROS */}
+        {showOtros && (
+          <CollapsibleSection
+            icon="compass-outline"
+            label="OTROS"
+            isExpanded={mostrarTexto}
+            isOpen={openSection === "Otros"}
+            onToggle={() => handleToggleSection("Otros")}
+          >
             <MenuOption
-              icon="stats-chart-outline"
-              label="Est. CECOM"
-              isActive={activeRoute === "rcecom"}
+              icon="map-outline"
+              label="Mapas"
+              isActive={activeRoute === "mapa"}
               isExpanded={true}
-              onPress={() => navigateTo("rcecom")}
+              onPress={() => navigateTo("mapa")}
               isSubItem
             />
-          )}
-        </CollapsibleSection>
-      )}
+            {userRolId === 1 && (
+              <MenuOption
+                icon="pin-outline"
+                label="Puntos"
+                isActive={activeRoute === "puntos"}
+                isExpanded={true}
+                onPress={() => navigateTo("puntos")}
+                isSubItem
+              />
+            )}
+          </CollapsibleSection>
+        )}
 
-      {/* Collapsible: OTROS / PRINCIPAL */}
-      {showOtros && (
-        <CollapsibleSection
-          icon="home-outline"
-          label="OTROS"
-          isExpanded={isExpanded || isMobile}
-          isOpen={openSection === "Otros" || openSection === "Principal"}
-          onToggle={() => handleToggleSection(isWeb ? "Principal" : "Otros")}
-        >
-          <MenuOption
-            icon="map-outline"
-            label="Mapas"
-            isActive={activeRoute === "mapa"}
-            isExpanded={true}
-            onPress={() => navigateTo("mapa")}
-            isSubItem
-          />
-         {((userRolId as number) === 1) && (
-      <MenuOption
-        icon="pin-outline"
-        label="Puntos"
-        isActive={activeRoute === "puntos"}
-        isExpanded={true}
-        onPress={() => navigateTo("puntos")}
-        isSubItem
-      />
-    )}
-  </CollapsibleSection>
-)}
-    </>
-  );
-})()}
-
-
-        {(userRolId === 4 || userRolId === 1) && (
+        {/* Collapsible: MANTENIMIENTO */}
+        {(userRolId === 1) && (
           <CollapsibleSection
             label="MANTENIMIENTO"
-            icon="location-outline"
-            isExpanded={isExpanded || isMobile}
+            icon="settings-outline"
+            isExpanded={mostrarTexto}
             isOpen={openSection === "Mantenimiento"}
             onToggle={() => handleToggleSection("Mantenimiento")}
           >
             <MenuOption
-              icon="location-outline"
+              icon="person-outline"
               label="Usuario"
               isActive={activeRoute === "usuario"}
               isExpanded={true}
               onPress={() => navigateTo("usuario")}
               isSubItem
             />
-          
             <MenuOption
-              icon="map-outline"
+              icon="shield-outline"
               label="PNP"
               isActive={activeRoute === "crudpnp"}
               isExpanded={true}
@@ -226,15 +215,15 @@ const handleToggleSection = (sectionLabel: string) => {
               isSubItem
             />
             <MenuOption
-              icon="map-outline"
+              icon="car-outline"
               label="Unidades"
               isActive={activeRoute === "crudunidades"}
               isExpanded={true}
               onPress={() => navigateTo("crudunidades")}
               isSubItem
             />
-             <MenuOption
-              icon="map-outline"
+            <MenuOption
+              icon="git-branch-outline"
               label="Vía"
               isActive={activeRoute === "crudvia"}
               isExpanded={true}
@@ -242,21 +231,41 @@ const handleToggleSection = (sectionLabel: string) => {
               isSubItem
             />
             <MenuOption
-              icon="map-outline"
+              icon="location-outline"
               label="Lugar"
               isActive={activeRoute === "crudlugar"}
               isExpanded={true}
               onPress={() => navigateTo("crudlugar")}
               isSubItem
             />
+            {userRolId === 1 && isWeb && (
+              <>
+                <MenuOption
+                  icon="business-outline"
+                  label="Departamento"
+                  isActive={activeRoute === "departamento"}
+                  isExpanded={true}
+                  onPress={() => navigateTo("departamento")}
+                  isSubItem
+                />
+                <MenuOption
+                  icon="map-outline"
+                  label="Distrito"
+                  isActive={activeRoute === "distrito"}
+                  isExpanded={true}
+                  onPress={() => navigateTo("distrito")}
+                  isSubItem
+                />
+              </>
+            )}
           </CollapsibleSection>
         )}
 
-        {(userRolId === 1) && isWeb && (
+        {userRolId === 1 && isWeb && (
           <CollapsibleSection
             label="MATRIZ"
-            icon="location-outline"
-            isExpanded={isExpanded || isMobile}
+            icon="grid-outline"
+            isExpanded={mostrarTexto}
             isOpen={openSection === "matriz"}
             onToggle={() => handleToggleSection("matriz")}
           >
@@ -276,17 +285,15 @@ const handleToggleSection = (sectionLabel: string) => {
               onPress={() => navigateTo("cecom")}
               isSubItem
             />
-           
-
-             <MenuOption
+            <MenuOption
               icon="radio-outline"
-              label="DASH KILO"
-              isActive={activeRoute === "cecomop"}
+              label="Principal"
+              isActive={activeRoute === "principal"}
               isExpanded={true}
-              onPress={() => navigateTo("cecomop")}
+              onPress={() => navigateTo("principal")}
               isSubItem
             />
-              <MenuOption
+            <MenuOption
               icon="radio-outline"
               label="DASH 2 KILO"
               isActive={activeRoute === "cecomsuper"}
@@ -297,63 +304,52 @@ const handleToggleSection = (sectionLabel: string) => {
           </CollapsibleSection>
         )}
 
-{( userRolId === 2 || userRolId === 1) && isWeb && (
+        {(userRolId === 2 || userRolId === 1) && isWeb && (
           <CollapsibleSection
             label="ESTADÍSTICA"
-            icon="location-outline"
-            isExpanded={isExpanded || isMobile}
+            icon="bar-chart-outline"
+            isExpanded={mostrarTexto}
             isOpen={openSection === "ESTADISTICA"}
             onToggle={() => handleToggleSection("ESTADISTICA")}
           >
-          <MenuOption
-              icon="location-outline"
+            <MenuOption
+              icon="pie-chart-outline"
               label="Dashboard"
               isActive={activeRoute === "estadist"}
               isExpanded={true}
               onPress={() => navigateTo("estadist")}
               isSubItem
             />
-            
-
-         
           </CollapsibleSection>
         )}
 
         {(userRolId === 2 || userRolId === 1) && isWeb && (
           <CollapsibleSection
             label="SIPCOP"
-            icon="location-outline"
-            isExpanded={isExpanded || isMobile}
+            icon="document-text-outline"
+            isExpanded={mostrarTexto}
             isOpen={openSection === "SIPCOP"}
             onToggle={() => handleToggleSection("SIPCOP")}
           >
             <MenuOption
-              icon="location-outline"
+              icon="calendar-outline"
               label="Rol de Servicio"
               isActive={activeRoute === "rolservicio"}
               isExpanded={true}
               onPress={() => navigateTo("rolservicio")}
               isSubItem
             />
+            
             <MenuOption
-              icon="location-outline"
-              label="Sipcop"
-              isActive={activeRoute === "sipcop"}
-              isExpanded={true}
-              onPress={() => navigateTo("sipcop")}
-              isSubItem
-            />
-            <MenuOption
-              icon="location-outline"
+              icon="documents-outline"
               label="Sipcop2"
               isActive={activeRoute === "sipcopd"}
               isExpanded={true}
               onPress={() => navigateTo("sipcopd")}
               isSubItem
             />
-
-               <MenuOption
-              icon="location-outline"
+            <MenuOption
+              icon="download-outline"
               label="Exportar"
               isActive={activeRoute === "exportar"}
               isExpanded={true}
@@ -361,7 +357,7 @@ const handleToggleSection = (sectionLabel: string) => {
               isSubItem
             />
             <MenuOption
-              icon="location-outline"
+              icon="calendar-number-outline"
               label="Exportar Rango"
               isActive={activeRoute === "exportarango"}
               isExpanded={true}
@@ -371,53 +367,34 @@ const handleToggleSection = (sectionLabel: string) => {
           </CollapsibleSection>
         )}
 
-       
+   {/* DRONES - Acceso directo */}
+{(userRolId === 4 || userRolId === 1) && (
+  <MenuOption
+    icon="navigate-outline"
+    label="Drones"
+    isActive={activeRoute === "principalDron"}
+    isExpanded={mostrarTexto}
+    onPress={() => navigateTo("principalDron")}
+  />
+)}
 
-
-        {(userRolId === 4 || userRolId === 1) && isWeb && (
-          <CollapsibleSection
-            label="DRONES"
-            icon="location-outline"
-            isExpanded={isExpanded || isMobile}
-            isOpen={openSection === "Drones"}
-            onToggle={() => handleToggleSection("Drones")}
-          >
-            <MenuOption
-              icon="navigate-outline"
-              label="Drones"
-              isActive={activeRoute === "principalDron"}
-              isExpanded={true}
-              onPress={() => navigateTo("principalDron")}
-              isSubItem
-            />
-          </CollapsibleSection>
-        )}
-
-        {(userRolId === 5 || userRolId === 1) && isWeb && (
-          <CollapsibleSection
-            label="MOVILIDAD"
-            icon="location-outline"
-            isExpanded={isExpanded || isMobile}
-            isOpen={openSection === "Movilidad Urbana"}
-            onToggle={() => handleToggleSection("Movilidad Urbana")}
-          >
-            <MenuOption
-              icon="navigate-outline"
-              label="Movilidad Urbana"
-              isActive={activeRoute === "principalmovilidad"}
-              isExpanded={true}
-              onPress={() => navigateTo("principalmovilidad")}
-              isSubItem
-            />
-          </CollapsibleSection>
-        )}
+{/* MOVILIDAD URBANA - Acceso directo */}
+{(userRolId === 5 || userRolId === 1) && (
+  <MenuOption
+    icon="car-sport-outline"
+    label="Movilidad Urbana"
+    isActive={activeRoute === "principalmovilidad"}
+    isExpanded={mostrarTexto}
+    onPress={() => navigateTo("principalmovilidad")}
+  />
+)}
 
         {userRolId === 1 && isWeb && (
           <>
             <CollapsibleSection
               label="SEGURIDAD"
               icon="lock-closed-outline"
-              isExpanded={isExpanded}
+              isExpanded={mostrarTexto}
               isOpen={openSection === "SEGURIDAD"}
               onToggle={() => handleToggleSection("SEGURIDAD")}
             >
@@ -440,50 +417,9 @@ const handleToggleSection = (sectionLabel: string) => {
             </CollapsibleSection>
 
             <CollapsibleSection
-              label="MANTENIMIENTO"
-              icon="settings-outline"
-              isExpanded={isExpanded}
-              isOpen={openSection === "AUDITORIA"}
-              onToggle={() => handleToggleSection("AUDITORIA")}
-            >
-              <MenuOption
-                icon="map-outline"
-                label="Usuario"
-                isActive={activeRoute === "usuario"}
-                isExpanded={true}
-                onPress={() => navigateTo("usuario")}
-                isSubItem
-              />
-              <MenuOption
-                icon="map-outline"
-                label="Departamento"
-                isActive={activeRoute === "departamento"}
-                isExpanded={true}
-                onPress={() => navigateTo("departamento")}
-                isSubItem
-              />
-              <MenuOption
-                icon="map-outline"
-                label="Distrito"
-                isActive={activeRoute === "distrito"}
-                isExpanded={true}
-                onPress={() => navigateTo("distrito")}
-                isSubItem
-              />
-              <MenuOption
-                icon="map-outline"
-                label="PNP"
-                isActive={activeRoute === "crudpnp"}
-                isExpanded={true}
-                onPress={() => navigateTo("crudpnp")}
-                isSubItem
-              />
-            </CollapsibleSection>
-
-            <CollapsibleSection
               label="PRUEBA"
               icon="flask-outline"
-              isExpanded={isExpanded}
+              isExpanded={mostrarTexto}
               isOpen={openSection === "Prueba"}
               onToggle={() => handleToggleSection("Prueba")}
             >
@@ -508,7 +444,7 @@ const handleToggleSection = (sectionLabel: string) => {
             <CollapsibleSection
               label="GESTIÓN DE PERSONAL"
               icon="people-outline"
-              isExpanded={isExpanded || isMobile}
+              isExpanded={mostrarTexto}
               isOpen={openSection === "PERSONAL"}
               onToggle={() => handleToggleSection("PERSONAL")}
             >
@@ -518,14 +454,6 @@ const handleToggleSection = (sectionLabel: string) => {
                 isActive={activeRoute === "persona"}
                 isExpanded={true}
                 onPress={() => navigateTo("persona")}
-                isSubItem
-              />
-              <MenuOption
-                icon="person-outline"
-                label="Usuario"
-                isActive={activeRoute === "usuario"}
-                isExpanded={true}
-                onPress={() => navigateTo("usuario")}
                 isSubItem
               />
               <MenuOption
@@ -547,8 +475,8 @@ const handleToggleSection = (sectionLabel: string) => {
               <MenuOption
                 icon="layers-outline"
                 label="Grupos"
-                isActive={activeRoute === "grupos"}
                 isExpanded={true}
+                isActive={activeRoute === "grupos"}
                 onPress={() => navigateTo("grupos")}
                 isSubItem
               />
@@ -557,7 +485,7 @@ const handleToggleSection = (sectionLabel: string) => {
             <CollapsibleSection
               label="HORARIOS Y TURNOS"
               icon="time-outline"
-              isExpanded={isExpanded || isMobile}
+              isExpanded={mostrarTexto}
               isOpen={openSection === "HORARIOS"}
               onToggle={() => handleToggleSection("HORARIOS")}
             >
@@ -598,7 +526,7 @@ const handleToggleSection = (sectionLabel: string) => {
             <CollapsibleSection
               label="OCURRENCIAS"
               icon="alert-circle-outline"
-              isExpanded={isExpanded || isMobile}
+              isExpanded={mostrarTexto}
               isOpen={openSection === "OCURRENCIAS"}
               onToggle={() => handleToggleSection("OCURRENCIAS")}
             >
@@ -639,7 +567,7 @@ const handleToggleSection = (sectionLabel: string) => {
             <CollapsibleSection
               label="PRODUCCIÓN Y CAMPO"
               icon="bar-chart-outline"
-              isExpanded={isExpanded || isMobile}
+              isExpanded={mostrarTexto}
               isOpen={openSection === "PRODUCCION"}
               onToggle={() => handleToggleSection("PRODUCCION")}
             >
@@ -659,10 +587,9 @@ const handleToggleSection = (sectionLabel: string) => {
                 onPress={() => navigateTo("puntos")}
                 isSubItem
               />
-
               <MenuOption
                 icon="navigate-circle-outline"
-                label="Puntos operativos"
+                label="Puntos operativos (Campo)"
                 isActive={activeRoute === "puntocam"}
                 isExpanded={true}
                 onPress={() => navigateTo("puntocam")}
@@ -673,7 +600,7 @@ const handleToggleSection = (sectionLabel: string) => {
             <CollapsibleSection
               label="ZONIFICACIÓN"
               icon="map-outline"
-              isExpanded={isExpanded || isMobile}
+              isExpanded={mostrarTexto}
               isOpen={openSection === "ZONIFICACION"}
               onToggle={() => handleToggleSection("ZONIFICACION")}
             >
@@ -698,7 +625,7 @@ const handleToggleSection = (sectionLabel: string) => {
             <CollapsibleSection
               label="LUGAR"
               icon="location-outline"
-              isExpanded={isExpanded || isMobile}
+              isExpanded={mostrarTexto}
               isOpen={openSection === "LUGAR"}
               onToggle={() => handleToggleSection("LUGAR")}
             >
@@ -721,14 +648,14 @@ const handleToggleSection = (sectionLabel: string) => {
             </CollapsibleSection>
 
             <CollapsibleSection
-              label="Por modalidades"
-              icon="location-outline"
-              isExpanded={isExpanded || isMobile}
+              label="POR MODALIDADES"
+              icon="albums-outline"
+              isExpanded={mostrarTexto}
               isOpen={openSection === "Por modalidades"}
               onToggle={() => handleToggleSection("Por modalidades")}
             >
               <MenuOption
-                icon="location-outline"
+                icon="book-outline"
                 label="Cuadernos de control"
                 isActive={activeRoute === "cuaderno"}
                 isExpanded={true}
@@ -736,7 +663,7 @@ const handleToggleSection = (sectionLabel: string) => {
                 isSubItem
               />
               <MenuOption
-                icon="location-outline"
+                icon="locate-outline"
                 label="Táctico Priorizado"
                 isActive={activeRoute === "tactp"}
                 isExpanded={true}
@@ -744,7 +671,7 @@ const handleToggleSection = (sectionLabel: string) => {
                 isSubItem
               />
               <MenuOption
-                icon="pie-chart-outline"
+                icon="school-outline"
                 label="Escuela Segura"
                 isActive={activeRoute === "escseg"}
                 isExpanded={true}
@@ -756,85 +683,94 @@ const handleToggleSection = (sectionLabel: string) => {
         )}
 
         {/* --- BOTÓN CERRAR SESIÓN --- */}
-       {/* --- BOTÓN CERRAR SESIÓN --- */}
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={async () => {
-            // Limpiamos la sesión del contexto
-            await logout();
-            
-            // Forzamos el reemplazo directo a la raíz sin recargar la ventana entera
-            router.replace("/");
-          }}
-        >
+        <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
           <View style={styles.iconBox}>
             <Ionicons name="log-out-outline" size={20} color="white" />
           </View>
-          <Text style={styles.menuText}>Cerrar Sesión</Text>
+          {mostrarTexto && <Text style={styles.menuText}>Cerrar Sesión</Text>}
         </TouchableOpacity>
       </DrawerContentScrollView>
     </View>
   );
 };
 
-const MenuOption = ({
-  icon,
-  label,
-  isExpanded,
-  onPress,
-  isActive,
-  isSubItem,
-}: any) => {
-  const validIcon =
-    icon && Ionicons.glyphMap[icon as keyof typeof Ionicons.glyphMap]
-      ? icon
-      : "ellipse-outline";
+const MenuOption = memo(
+  ({ icon, label, isExpanded, onPress, isActive, isSubItem }: any) => {
+    const validIcon =
+      icon && Ionicons.glyphMap[icon as keyof typeof Ionicons.glyphMap]
+        ? icon
+        : "ellipse-outline";
 
-  return (
-    <TouchableOpacity
-      style={[
-        styles.menuItem,
-        isSubItem && styles.subMenuItem,
-        isActive && styles.activeBackground,
-      ]}
-      onPress={onPress}
-    >
-      <View style={styles.iconBox}>
-        <Ionicons name={validIcon as any} size={20} color="white" />
-      </View>
-      {isExpanded && <Text style={styles.menuText}>{label}</Text>}
-    </TouchableOpacity>
-  );
-};
-
-const CollapsibleSection = ({
-  label,
-  children,
-  isOpen,
-  onToggle,
-}: any) => (
-  <View>
-    <TouchableOpacity onPress={onToggle} style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText}>{label}</Text>
-    </TouchableOpacity>
-    {isOpen && <View>{children}</View>}
-  </View>
+    return (
+      <TouchableOpacity
+        style={[
+          styles.menuItem,
+          isSubItem && styles.subMenuItem,
+          isActive && styles.activeBackground,
+        ]}
+        onPress={onPress}
+      >
+        {isActive && <View style={styles.glowBar} />}
+        <View style={styles.iconBox}>
+          <Ionicons name={validIcon as any} size={20} color="white" />
+        </View>
+        {isExpanded && (
+          <Text style={[styles.menuText, isActive && styles.activeTextGlow]}>
+            {label}
+          </Text>
+        )}
+      </TouchableOpacity>
+    );
+  }
 );
 
+const CollapsibleSection = memo(
+  ({ icon, label, isExpanded, children, isOpen, onToggle }: any) => {
+    const validIcon =
+      icon && Ionicons.glyphMap[icon as keyof typeof Ionicons.glyphMap]
+        ? icon
+        : "folder-outline";
+
+    return (
+      <View style={styles.sectionContainer}>
+        <TouchableOpacity onPress={onToggle} style={styles.sectionHeader}>
+          <View style={styles.iconBox}>
+            <Ionicons
+              name={validIcon as any}
+              size={18}
+              color="rgba(255,255,255,0.75)"
+            />
+          </View>
+          {isExpanded && (
+            <>
+              <Text
+                style={[styles.sectionHeaderText, { flex: 1, marginLeft: 5 }]}
+              >
+                {label}
+              </Text>
+              <Ionicons
+                name={isOpen ? "chevron-up" : "chevron-down"}
+                size={14}
+                color="rgba(255,255,255,0.6)"
+              />
+            </>
+          )}
+        </TouchableOpacity>
+        {isOpen && <View>{children}</View>}
+      </View>
+    );
+  }
+);
 
 const styles = StyleSheet.create({
-
   loadingContainer: { justifyContent: "center", alignItems: "center" },
- 
   container: { flex: 1, backgroundColor: "#004481" },
-  
   sidebarHeader: {
     padding: 20,
     paddingTop: 30,
     alignItems: "center",
     flexDirection: "row",
   },
-  
   avatarLarge: {
     width: 50,
     height: 50,
@@ -844,7 +780,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   subMenuItem: {
-    paddingLeft: 36, // <--- Ajusta este valor (28, 36 o 40) según qué tan a la derecha los quieres
+    paddingLeft: 36,
   },
   avatarLargeText: { color: "#fff", fontSize: 20, fontWeight: "bold" },
   userInfo: { marginLeft: 15, flex: 1 },
@@ -877,8 +813,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 4,
     borderBottomRightRadius: 4,
   },
-
-  
   sectionContainer: { marginVertical: 2 },
   sectionHeader: {
     flexDirection: "row",
@@ -886,7 +820,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 15,
   },
-  
   sectionHeaderText: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 11,

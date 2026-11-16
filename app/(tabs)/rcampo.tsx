@@ -1,10 +1,12 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,9 +15,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.17:3000";
 const MJM_BLUE = "#024885";
 const LIMIT_INICIAL = 5;
+const PERMITIDOS_PATRULLAJE = [1, 2, 3, 4, 6, 8];
 
 interface EstadisticaItem {
   id?: number | string;
@@ -57,10 +61,8 @@ interface TipoVehiculoItem {
   descripcion: string;
 }
 
-// 📌 Catálogo estático de tipos de vehículo enlazados a ocurrencia_vehiculo_detalle (id_tipo_vehiculo)
 const TIPOS_VEHICULO_ESTATICOS: TipoVehiculoItem[] = [
   { id_tipo_vehiculo: 1, descripcion: "Camioneta" },
-  
   { id_tipo_vehiculo: 4, descripcion: "Ambulancia" },
 ];
 
@@ -123,7 +125,11 @@ const DashboardCard = React.memo(
         <View style={styles.divider} />
 
         {loading ? (
-          <ActivityIndicator size="small" color={colorTema} style={{ marginVertical: 25 }} />
+          <ActivityIndicator
+            size="small"
+            color={colorTema}
+            style={{ marginVertical: 25 }}
+          />
         ) : datos.length > 0 ? (
           <>
             {datosVisibles.map((item, index) => {
@@ -134,7 +140,7 @@ const DashboardCard = React.memo(
               );
 
               return (
-                <View key={`${item.label}-${index}`} style={styles.barGroup}>
+                <View key={`${item.id ?? item.label}-${index}`} style={styles.barGroup}>
                   {isUserCard ? (
                     <TouchableOpacity
                       style={styles.labelRowClickable}
@@ -181,7 +187,9 @@ const DashboardCard = React.memo(
                 activeOpacity={0.7}
               >
                 <ThemedText style={[styles.verMasText, { color: colorTema }]}>
-                  {showAll ? "Ver menos" : `Ver más (${datos.length - LIMIT_INICIAL} ocultos)`}
+                  {showAll
+                    ? "Ver menos"
+                    : `Ver más (${datos.length - LIMIT_INICIAL} ocultos)`}
                 </ThemedText>
                 <Ionicons
                   name={showAll ? "chevron-up" : "chevron-down"}
@@ -192,7 +200,9 @@ const DashboardCard = React.memo(
             )}
           </>
         ) : (
-          <ThemedText style={styles.emptyText}>No hay registros en este turno.</ThemedText>
+          <ThemedText style={styles.emptyText}>
+            No hay registros en este turno.
+          </ThemedText>
         )}
       </View>
     );
@@ -207,17 +217,14 @@ export default function GraficoEstadisticasScreen() {
 
   const [showAllUsuarios, setShowAllUsuarios] = useState<boolean>(false);
 
-  // Estados de los filtros
   const [tiposPatrullajeList, setTiposPatrullajeList] = useState<TipoPatrullajeItem[]>([]);
   const [filtroTipoPatrullaje, setFiltroTipoPatrullaje] = useState<string>("TODOS");
   const [totalesTipoPatrullaje, setTotalesTipoPatrullaje] = useState<Record<string, number>>({});
   const [totalGeneralPatrullaje, setTotalGeneralPatrullaje] = useState<number>(0);
 
-  // Filtro de Tipo de Vehículo vinculado a ocurrencia_vehiculo_detalle (id_tipo_vehiculo)
   const [tiposVehiculoList] = useState<TipoVehiculoItem[]>(TIPOS_VEHICULO_ESTATICOS);
   const [filtroTipoVehiculo, setFiltroTipoVehiculo] = useState<string>("TODOS");
 
-  // Estados del Modal y Navegación (Modalidades y Direcciones)
   const [selectedUserId, setSelectedUserId] = useState<number | string | null>(null);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [modalidadesUsuario, setModalidadesUsuario] = useState<ModalidadPorUsuario[]>([]);
@@ -227,110 +234,171 @@ export default function GraficoEstadisticasScreen() {
   const [direccionesModalidad, setDireccionesModalidad] = useState<DireccionItem[]>([]);
   const [loadingDirecciones, setLoadingDirecciones] = useState<boolean>(false);
 
-// ✅ CÓDIGO NUEVO:
-const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoActual());
+  const [textoTurno, setTextoTurno] = useState<string>(obtenerTextoTurnoActual());
 
-useEffect(() => {
-  // Actualizar el estado al montar el componente
-  setTextoTurno(obtenerTextoTurnoActual());
+  const isMountedRef = useRef(true);
+  const statsAbortRef = useRef<AbortController | null>(null);
+  const conteosAbortRef = useRef<AbortController | null>(null);
+  const modalAbortRef = useRef<AbortController | null>(null);
 
-  // Verificar la hora cada 30 segundos
-  const interval = setInterval(() => {
-    setTextoTurno(obtenerTextoTurnoActual());
-  }, 30000);
-
-  return () => clearInterval(interval);
-}, []);
   useEffect(() => {
-    fetch(`${API_BASE_URL}/ocurrencias/catalogos-filtros`)
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      statsAbortRef.current?.abort();
+      conteosAbortRef.current?.abort();
+      modalAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    setTextoTurno(obtenerTextoTurnoActual());
+    const interval = setInterval(() => {
+      setTextoTurno(obtenerTextoTurnoActual());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_BASE_URL}/ocurrencias/catalogos-filtros`, {
+      signal: controller.signal,
+    })
       .then((res) => res.json())
       .then((data) => {
+        if (!isMountedRef.current) return;
         if (data.success && data.tipos_patrullaje) {
-          const permitidos = [1, 2, 3, 4,6, 8];
           const filtrados = data.tipos_patrullaje.filter((item: TipoPatrullajeItem) =>
-            permitidos.includes(Number(item.id_tipop))
+            PERMITIDOS_PATRULLAJE.includes(Number(item.id_tipop))
           );
           setTiposPatrullajeList(filtrados);
         }
       })
-      .catch((err) => console.error("Error cargando catálogos de filtros", err));
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Error cargando catálogos de filtros", err);
+        }
+      });
+
+    return () => controller.abort();
   }, []);
 
-  // 📌 NUEVO: Si no es el patrullaje 3, reseteamos automáticamente el filtro de vehículos
   useEffect(() => {
     if (filtroTipoPatrullaje !== "3") {
       setFiltroTipoVehiculo("TODOS");
     }
+    setShowAllUsuarios(false);
   }, [filtroTipoPatrullaje]);
 
-  // Construcción de parámetros enviando id_tipop e id_tipo_vehiculo
-const construirQueryString = useCallback(() => {
-  let query = "?excluir_origenes=1,5,6,7,11&";
-  
-  if (filtroTipoPatrullaje !== "TODOS") {
-    query += `id_tipop=${filtroTipoPatrullaje}&`;
-    if (filtroTipoPatrullaje === "3" && filtroTipoVehiculo !== "TODOS") {
-      query += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
-    } else if (filtroTipoPatrullaje === "3" && filtroTipoVehiculo === "TODOS") {
-      query += `excluir_tipo_vehiculo=2&`; // Excluye motos en patrullaje 3
-    }
-  } else {
-    // 📌 Agregamos esto para que en "TODOS" también se excluyan las motos del patrullaje 3
-    query += `excluir_tipo_vehiculo=2&`;
-  }
-  
-  return query;
-}, [filtroTipoPatrullaje, filtroTipoVehiculo]);
+  // Mismo query string consistente para tarjeta principal y modales
+  const construirQueryString = useCallback(
+    (incluirSoloUsuarios = false) => {
+      const params = new URLSearchParams();
+      params.set("excluir_origenes", "1,5,6,7,11");
+      if (incluirSoloUsuarios) params.set("solo_usuarios", "1");
+
+      if (filtroTipoPatrullaje !== "TODOS") {
+        params.set("id_tipop", filtroTipoPatrullaje);
+        if (filtroTipoPatrullaje === "3") {
+          if (filtroTipoVehiculo !== "TODOS") {
+            params.set("id_tipo_vehiculo", filtroTipoVehiculo);
+          } else {
+            params.set("excluir_tipo_vehiculo", "2");
+          }
+        }
+      } else {
+        params.set("excluir_tipo_vehiculo", "2");
+      }
+
+      return `?${params.toString()}`;
+    },
+    [filtroTipoPatrullaje, filtroTipoVehiculo]
+  );
 
   const fetchEstadisticas = useCallback(async () => {
+    statsAbortRef.current?.abort();
+    const controller = new AbortController();
+    statsAbortRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), 15000);
+
     setErrorMessage(null);
     try {
-      const url = `${API_BASE_URL}/ocurrencias/estadisticas${construirQueryString()}`;
-      const response = await fetch(url);
+      const url = `${API_BASE_URL}/ocurrencias/estadisticas${construirQueryString(true)}`;
+      const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) throw new Error("Error en la petición de datos");
       const data = await response.json();
 
+      if (!isMountedRef.current) return;
       setEstadisticasUsuarios(data.por_usuario || []);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === "AbortError") return;
       console.error("Error al cargar estadísticas:", error);
-      setErrorMessage("No se pudieron actualizar los datos del servidor.");
+      if (isMountedRef.current) {
+        setErrorMessage("No se pudieron actualizar los datos del servidor.");
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      clearTimeout(timer);
+      if (isMountedRef.current && statsAbortRef.current === controller) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [construirQueryString]);
 
+  // Paralelizado con Promise.all (6x más rápido que el bucle for secuencial)
   const fetchConteoFiltros = useCallback(async () => {
+    conteosAbortRef.current?.abort();
+    const controller = new AbortController();
+    conteosAbortRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), 15000);
+
     try {
-      const permitidos = [1, 2, 3, 4, 6, 8];
+      const respuestas = await Promise.all(
+        PERMITIDOS_PATRULLAJE.map(async (idTipop) => {
+          const params = new URLSearchParams();
+          params.set("id_tipop", String(idTipop));
+          params.set("excluir_origenes", "1,5,6,7,11");
+          params.set("solo_usuarios", "1");
+
+          if (String(idTipop) === "3") {
+            if (filtroTipoVehiculo !== "TODOS") {
+              params.set("id_tipo_vehiculo", filtroTipoVehiculo);
+            } else {
+              params.set("excluir_tipo_vehiculo", "2");
+            }
+          }
+
+          const res = await fetch(
+            `${API_BASE_URL}/ocurrencias/estadisticas?${params.toString()}`,
+            { signal: controller.signal }
+          );
+          if (!res.ok) return { idTipop: String(idTipop), total: 0 };
+          const data = await res.json();
+          const porUsuario: EstadisticaItem[] = data.por_usuario || [];
+          const totalTipo = porUsuario.reduce(
+            (acc, item) => acc + Number(item.value || 0),
+            0
+          );
+          return { idTipop: String(idTipop), total: totalTipo };
+        })
+      );
+
+      if (!isMountedRef.current) return;
       const nuevosTotales: Record<string, number> = {};
       let sumaTotal = 0;
-
-      for (const idTipop of permitidos) {
-        let url = `${API_BASE_URL}/ocurrencias/estadisticas?id_tipop=${idTipop}&excluir_origenes=1,5,6,7,11`;
-        
-        // 📌 Si estamos calculando el conteo del patrullaje 3, excluimos las motos (id_tipo_vehiculo = 2)
-        if (String(idTipop) === "3") {
-          if (filtroTipoVehiculo !== "TODOS") {
-            url += `&id_tipo_vehiculo=${filtroTipoVehiculo}`;
-          } else {
-            url += `&excluir_tipo_vehiculo=2`;
-          }
-        }
-
-        const response = await fetch(url);
-        const data = await response.json();
-        const porUsuario: EstadisticaItem[] = data.por_usuario || [];
-        const totalTipo = porUsuario.reduce((acc, item) => acc + Number(item.value || 0), 0);
-        
-        nuevosTotales[String(idTipop)] = totalTipo;
-        sumaTotal += totalTipo;
+      for (const r of respuestas) {
+        nuevosTotales[r.idTipop] = r.total;
+        sumaTotal += r.total;
       }
 
       setTotalesTipoPatrullaje(nuevosTotales);
       setTotalGeneralPatrullaje(sumaTotal);
-    } catch (error) {
-      console.error("Error obteniendo conteos de filtros", error);
+    } catch (error: any) {
+      if (error?.name !== "AbortError") {
+        console.error("Error obteniendo conteos de filtros", error);
+      }
+    } finally {
+      clearTimeout(timer);
     }
   }, [filtroTipoVehiculo]);
 
@@ -342,65 +410,98 @@ const construirQueryString = useCallback(() => {
     fetchConteoFiltros();
   }, [fetchConteoFiltros]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchEstadisticas();
     fetchConteoFiltros();
-  };
+  }, [fetchEstadisticas, fetchConteoFiltros]);
 
-  const handleSelectUser = useCallback(async (idUsuario: number | string, nombreUsuario: string) => {
-    setSelectedUserId(idUsuario);
-    setSelectedUser(nombreUsuario);
-    setSelectedModalidad(null);
-    setLoadingUserModalidades(true);
-    try {
-      let url = `${API_BASE_URL}/ocurrencias/modalidades-por-usuario?id_usuario=${idUsuario}&excluir_origenes=1,5,6,7,11&`;
-      if (filtroTipoPatrullaje !== "TODOS") url += `id_tipop=${filtroTipoPatrullaje}&`;
-      if (filtroTipoVehiculo !== "TODOS" && filtroTipoPatrullaje === "3") url += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
+  const handleSelectUser = useCallback(
+    async (idUsuario: number | string, nombreUsuario: string) => {
+      modalAbortRef.current?.abort();
+      const controller = new AbortController();
+      modalAbortRef.current = controller;
 
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Error obteniendo detalles");
-      const data = await response.json();
-      setModalidadesUsuario(data.modalidades || []);
-    } catch (error) {
-      console.error("Error:", error);
-      setModalidadesUsuario([]);
-    } finally {
-      setLoadingUserModalidades(false);
-    }
-  }, [filtroTipoPatrullaje, filtroTipoVehiculo]);
+      setSelectedUserId(idUsuario);
+      setSelectedUser(nombreUsuario);
+      setSelectedModalidad(null);
+      setLoadingUserModalidades(true);
 
-  const handleSelectModalidad = useCallback(async (nombreModalidad: string) => {
-    if (!selectedUserId) return;
-    setSelectedModalidad(nombreModalidad);
-    setLoadingDirecciones(true);
-    try {
-      let url = `${API_BASE_URL}/ocurrencias/detalle-por-modalidad?id_usuario=${selectedUserId}&modalidad=${encodeURIComponent(nombreModalidad)}&excluir_origenes=1,5,6,7,11&`;
-      if (filtroTipoPatrullaje !== "TODOS") url += `id_tipop=${filtroTipoPatrullaje}&`;
-      if (filtroTipoVehiculo !== "TODOS" && filtroTipoPatrullaje === "3") url += `id_tipo_vehiculo=${filtroTipoVehiculo}&`;
+      try {
+        const qs = construirQueryString(false);
+        const url = `${API_BASE_URL}/ocurrencias/modalidades-por-usuario${qs}&id_usuario=${encodeURIComponent(
+          String(idUsuario)
+        )}`;
 
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Error obteniendo direcciones");
-      const data = await response.json();
-      setDireccionesModalidad(data.direcciones || []);
-    } catch (error) {
-      console.error("Error:", error);
-      setDireccionesModalidad([]);
-    } finally {
-      setLoadingDirecciones(false);
-    }
-  }, [selectedUserId, filtroTipoPatrullaje, filtroTipoVehiculo]);
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("Error obteniendo detalles");
+        const data = await response.json();
+        if (isMountedRef.current) {
+          setModalidadesUsuario(data.modalidades || []);
+        }
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        console.error("Error:", error);
+        if (isMountedRef.current) setModalidadesUsuario([]);
+      } finally {
+        if (isMountedRef.current && modalAbortRef.current === controller) {
+          setLoadingUserModalidades(false);
+        }
+      }
+    },
+    [construirQueryString]
+  );
 
-  const cerrarModal = () => {
+  const handleSelectModalidad = useCallback(
+    async (nombreModalidad: string) => {
+      if (!selectedUserId) return;
+      modalAbortRef.current?.abort();
+      const controller = new AbortController();
+      modalAbortRef.current = controller;
+
+      setSelectedModalidad(nombreModalidad);
+      setLoadingDirecciones(true);
+
+      try {
+        const qs = construirQueryString(false);
+        const url = `${API_BASE_URL}/ocurrencias/detalle-por-modalidad${qs}&id_usuario=${encodeURIComponent(
+          String(selectedUserId)
+        )}&modalidad=${encodeURIComponent(nombreModalidad)}`;
+
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("Error obteniendo direcciones");
+        const data = await response.json();
+        if (isMountedRef.current) {
+          setDireccionesModalidad(data.direcciones || []);
+        }
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        console.error("Error:", error);
+        if (isMountedRef.current) setDireccionesModalidad([]);
+      } finally {
+        if (isMountedRef.current && modalAbortRef.current === controller) {
+          setLoadingDirecciones(false);
+        }
+      }
+    },
+    [selectedUserId, construirQueryString]
+  );
+
+  const cerrarModal = useCallback(() => {
+    modalAbortRef.current?.abort();
     setSelectedUserId(null);
     setSelectedUser(null);
     setSelectedModalidad(null);
     setModalidadesUsuario([]);
     setDireccionesModalidad([]);
-  };
+  }, []);
 
   const totalUsuarios = useMemo(
-    () => estadisticasUsuarios.reduce((acc, item) => acc + Number(item.value || 0), 0),
+    () =>
+      estadisticasUsuarios.reduce(
+        (acc, item) => acc + Number(item.value || 0),
+        0
+      ),
     [estadisticasUsuarios]
   );
 
@@ -411,54 +512,89 @@ const construirQueryString = useCallback(() => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={MJM_BLUE} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={MJM_BLUE}
+            />
           }
         >
           {/* CABECERA Y TURNO */}
-        {/* CABECERA Y TURNO */}
-<View style={styles.headerContainer}>
-  <View style={{ flex: 1, marginRight: 10 }}>
-    {/* 📌 Contenedor horizontal para la fila del título y el total */}
-    <View style={styles.tituloRow}>
-      <ThemedText style={styles.mainTitle}>DASHBOARD CAMPO GENERAL</ThemedText>
-      <ThemedText style={styles.totalHeaderBadge}>
-        ({totalGeneralPatrullaje} reg.)
-      </ThemedText>
-    </View>
+          <View style={styles.headerContainer}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <View style={styles.tituloRow}>
+                <ThemedText style={styles.mainTitle}>
+                  DASHBOARD CAMPO GENERAL
+                </ThemedText>
+                <ThemedText style={styles.totalHeaderBadge}>
+                  ({totalGeneralPatrullaje} reg.)
+                </ThemedText>
+              </View>
 
-    <View style={styles.turnoBadge}>
-      <Ionicons name="time-outline" size={12} color={MJM_BLUE} />
-      <ThemedText style={styles.turnoBadgeText}>{textoTurno}</ThemedText>
-    </View>
-  </View>
+              <View style={styles.turnoBadge}>
+                <Ionicons name="time-outline" size={12} color={MJM_BLUE} />
+                <ThemedText style={styles.turnoBadgeText}>
+                  {textoTurno}
+                </ThemedText>
+              </View>
+            </View>
 
-  <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} activeOpacity={0.8}>
-    <Ionicons name="refresh" size={16} color="white" />
-    <ThemedText style={styles.refreshButtonText}>Actualizar</ThemedText>
-  </TouchableOpacity>
-</View>
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={onRefresh}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="refresh" size={16} color="white" />
+              <ThemedText style={styles.refreshButtonText}>Actualizar</ThemedText>
+            </TouchableOpacity>
+          </View>
 
           {/* FILTROS SUPERIORES */}
           <View style={styles.filtrosContainer}>
-            <ThemedText style={styles.filtroLabel}>Tipo de Patrullaje:</ThemedText>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeScroll}>
+            <ThemedText style={styles.filtroLabel}>
+              Tipo de Patrullaje:
+            </ThemedText>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.badgeScroll}
+            >
               <TouchableOpacity
-                style={[styles.badge, filtroTipoPatrullaje === "TODOS" && styles.badgeActive]}
+                style={[
+                  styles.badge,
+                  filtroTipoPatrullaje === "TODOS" && styles.badgeActive,
+                ]}
                 onPress={() => setFiltroTipoPatrullaje("TODOS")}
               >
-                <ThemedText style={[styles.badgeText, filtroTipoPatrullaje === "TODOS" && styles.badgeTextActive]}>
+                <ThemedText
+                  style={[
+                    styles.badgeText,
+                    filtroTipoPatrullaje === "TODOS" && styles.badgeTextActive,
+                  ]}
+                >
                   Todos ({totalGeneralPatrullaje})
                 </ThemedText>
               </TouchableOpacity>
               {tiposPatrullajeList.map((item) => {
-                const countTipo = totalesTipoPatrullaje[String(item.id_tipop)] ?? 0;
+                const countTipo =
+                  totalesTipoPatrullaje[String(item.id_tipop)] ?? 0;
                 return (
                   <TouchableOpacity
                     key={item.id_tipop}
-                    style={[styles.badge, filtroTipoPatrullaje === String(item.id_tipop) && styles.badgeActive]}
+                    style={[
+                      styles.badge,
+                      filtroTipoPatrullaje === String(item.id_tipop) &&
+                        styles.badgeActive,
+                    ]}
                     onPress={() => setFiltroTipoPatrullaje(String(item.id_tipop))}
                   >
-                    <ThemedText style={[styles.badgeText, filtroTipoPatrullaje === String(item.id_tipop) && styles.badgeTextActive]}>
+                    <ThemedText
+                      style={[
+                        styles.badgeText,
+                        filtroTipoPatrullaje === String(item.id_tipop) &&
+                          styles.badgeTextActive,
+                      ]}
+                    >
                       {item.nombre} ({countTipo})
                     </ThemedText>
                   </TouchableOpacity>
@@ -466,27 +602,55 @@ const construirQueryString = useCallback(() => {
               })}
             </ScrollView>
 
-            {/* 📌 SE MUESTRA ÚNICAMENTE CUANDO EL TIPO DE PATRULLAJE ES 3 */}
             {filtroTipoPatrullaje === "3" && (
               <>
                 <View style={{ height: 10 }} />
-                <ThemedText style={styles.filtroLabel}>Tipo de Vehículo (Detalle):</ThemedText>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeScroll}>
+                <ThemedText style={styles.filtroLabel}>
+                  Tipo de Vehículo (Detalle):
+                </ThemedText>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.badgeScroll}
+                >
                   <TouchableOpacity
-                    style={[styles.badge, filtroTipoVehiculo === "TODOS" && styles.badgeActiveVehiculo]}
+                    style={[
+                      styles.badge,
+                      filtroTipoVehiculo === "TODOS" &&
+                        styles.badgeActiveVehiculo,
+                    ]}
                     onPress={() => setFiltroTipoVehiculo("TODOS")}
                   >
-                    <ThemedText style={[styles.badgeText, filtroTipoVehiculo === "TODOS" && styles.badgeTextActive]}>
+                    <ThemedText
+                      style={[
+                        styles.badgeText,
+                        filtroTipoVehiculo === "TODOS" &&
+                          styles.badgeTextActive,
+                      ]}
+                    >
                       Todos
                     </ThemedText>
                   </TouchableOpacity>
                   {tiposVehiculoList.map((item) => (
                     <TouchableOpacity
                       key={item.id_tipo_vehiculo}
-                      style={[styles.badge, filtroTipoVehiculo === String(item.id_tipo_vehiculo) && styles.badgeActiveVehiculo]}
-                      onPress={() => setFiltroTipoVehiculo(String(item.id_tipo_vehiculo))}
+                      style={[
+                        styles.badge,
+                        filtroTipoVehiculo === String(item.id_tipo_vehiculo) &&
+                          styles.badgeActiveVehiculo,
+                      ]}
+                      onPress={() =>
+                        setFiltroTipoVehiculo(String(item.id_tipo_vehiculo))
+                      }
                     >
-                      <ThemedText style={[styles.badgeText, filtroTipoVehiculo === String(item.id_tipo_vehiculo) && styles.badgeTextActive]}>
+                      <ThemedText
+                        style={[
+                          styles.badgeText,
+                          filtroTipoVehiculo ===
+                            String(item.id_tipo_vehiculo) &&
+                            styles.badgeTextActive,
+                        ]}
+                      >
                         {item.descripcion}
                       </ThemedText>
                     </TouchableOpacity>
@@ -502,7 +666,6 @@ const construirQueryString = useCallback(() => {
             </View>
           )}
 
-          {/* DASHBOARD GRID */}
           <View style={styles.dashboardGrid}>
             <DashboardCard
               titulo="RENDIMIENTO POR PERSONAL"
@@ -519,14 +682,22 @@ const construirQueryString = useCallback(() => {
           </View>
         </ScrollView>
 
-        {/* MODAL DE DESGLOSE ORIGINAL */}
-        <Modal visible={!!selectedUser} animationType="fade" transparent={true}>
+        {/* MODAL DE DESGLOSE */}
+        <Modal
+          visible={!!selectedUser}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={cerrarModal}
+        >
           <View style={styles.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={cerrarModal} />
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
                   <ThemedText style={styles.modalTitle}>
-                    {selectedModalidad ? "DIRECCIONES ASOCIADAS" : "DESGLOSE POR PERSONAL"}
+                    {selectedModalidad
+                      ? "DIRECCIONES ASOCIADAS"
+                      : "DESGLOSE POR PERSONAL"}
                   </ThemedText>
                   <ThemedText style={styles.modalSubtitle} numberOfLines={1}>
                     {selectedModalidad ? selectedModalidad : selectedUser}
@@ -541,54 +712,98 @@ const construirQueryString = useCallback(() => {
 
               {!selectedModalidad ? (
                 loadingUserModalidades ? (
-                  <ActivityIndicator size="small" color={MJM_BLUE} style={{ marginVertical: 30 }} />
+                  <ActivityIndicator
+                    size="small"
+                    color={MJM_BLUE}
+                    style={{ marginVertical: 30 }}
+                  />
                 ) : modalidadesUsuario.length > 0 ? (
-                  <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
-                    {modalidadesUsuario.map((mod, idx) => (
+                  <FlatList
+                    data={modalidadesUsuario}
+                    keyExtractor={(mod, idx) => `${mod.modalidad}-${idx}`}
+                    style={{ maxHeight: 300 }}
+                    initialNumToRender={15}
+                    maxToRenderPerBatch={15}
+                    windowSize={5}
+                    renderItem={({ item: mod }) => (
                       <TouchableOpacity
-                        key={`${mod.modalidad}-${idx}`}
                         style={styles.modalItemRowClickable}
                         activeOpacity={0.7}
                         onPress={() => handleSelectModalidad(mod.modalidad)}
                       >
                         <ThemedText style={styles.modalItemLabelLink} numberOfLines={1}>
-                          • {mod.modalidad} <Ionicons name="chevron-forward" size={11} color={MJM_BLUE} />
+                          • {mod.modalidad}{" "}
+                          <Ionicons
+                            name="chevron-forward"
+                            size={11}
+                            color={MJM_BLUE}
+                          />
                         </ThemedText>
-                        <ThemedText style={styles.modalItemVal}>{mod.cantidad} reg.</ThemedText>
+                        <ThemedText style={styles.modalItemVal}>
+                          {mod.cantidad} reg.
+                        </ThemedText>
                       </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                    )}
+                  />
                 ) : (
-                  <ThemedText style={styles.emptyText}>No hay modalidades registradas.</ThemedText>
+                  <ThemedText style={styles.emptyText}>
+                    No hay modalidades registradas.
+                  </ThemedText>
                 )
               ) : (
                 <View>
-                  <TouchableOpacity style={styles.backButton} onPress={() => setSelectedModalidad(null)}>
+                  <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => setSelectedModalidad(null)}
+                  >
                     <Ionicons name="arrow-back" size={14} color={MJM_BLUE} />
-                    <ThemedText style={styles.backButtonText}>Volver a modalidades</ThemedText>
+                    <ThemedText style={styles.backButtonText}>
+                      Volver a modalidades
+                    </ThemedText>
                   </TouchableOpacity>
 
                   {loadingDirecciones ? (
-                    <ActivityIndicator size="small" color={MJM_BLUE} style={{ marginVertical: 30 }} />
+                    <ActivityIndicator
+                      size="small"
+                      color={MJM_BLUE}
+                      style={{ marginVertical: 30 }}
+                    />
                   ) : direccionesModalidad.length > 0 ? (
-                    <ScrollView style={{ maxHeight: 250 }} showsVerticalScrollIndicator={false}>
-                      {direccionesModalidad.map((item, idx) => (
-                        <View key={idx} style={styles.modalItemRow}>
+                    <FlatList
+                      data={direccionesModalidad}
+                      keyExtractor={(item, idx) =>
+                        `${item.DIRECCIÓN_CONSOLIDADA}-${idx}`
+                      }
+                      style={{ maxHeight: 250 }}
+                      initialNumToRender={15}
+                      maxToRenderPerBatch={15}
+                      windowSize={5}
+                      renderItem={({ item }) => (
+                        <View style={styles.modalItemRow}>
                           <ThemedText style={styles.modalItemLabel} numberOfLines={2}>
                             📍 {item.DIRECCIÓN_CONSOLIDADA}
                           </ThemedText>
-                          <ThemedText style={styles.modalItemVal}>{item.CANTIDAD} reg.</ThemedText>
+                          <ThemedText style={styles.modalItemVal}>
+                            {item.CANTIDAD} reg.
+                          </ThemedText>
                         </View>
-                      ))}
-                    </ScrollView>
+                      )}
+                    />
                   ) : (
-                    <ThemedText style={styles.emptyText}>No hay direcciones registradas.</ThemedText>
+                    <ThemedText style={styles.emptyText}>
+                      No hay direcciones registradas.
+                    </ThemedText>
                   )}
                 </View>
               )}
 
-              <TouchableOpacity style={styles.modalCloseFooter} onPress={cerrarModal}>
-                <ThemedText style={styles.modalCloseFooterText}>Cerrar</ThemedText>
+              <TouchableOpacity
+                style={styles.modalCloseFooter}
+                onPress={cerrarModal}
+              >
+                <ThemedText style={styles.modalCloseFooterText}>
+                  Cerrar
+                </ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -747,8 +962,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flexWrap: "wrap",
   },
-  // 📌 Estilo para resaltar el total al lado del título
   totalHeaderBadge: {
     fontSize: 14,
     fontWeight: "900",
@@ -810,14 +1025,48 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
-  turnoBadge: { flexDirection: "row", alignItems: "center", backgroundColor: MJM_BLUE + "12", paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, alignSelf: "flex-start", marginTop: 4 },
-  turnoBadgeText: { fontSize: 11, fontWeight: "700", color: MJM_BLUE, marginLeft: 4 },
+  turnoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: MJM_BLUE + "12",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  turnoBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: MJM_BLUE,
+    marginLeft: 4,
+  },
   modalCloseFooterText: { color: "white", fontSize: 12, fontWeight: "bold" },
-  
-  filtrosContainer: { backgroundColor: "white", padding: 10, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: "#e2e8f0" },
-  filtroLabel: { fontSize: 10, fontWeight: "700", color: "#64748b", marginBottom: 4, textTransform: "uppercase" },
+  filtrosContainer: {
+    backgroundColor: "white",
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  filtroLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748b",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
   badgeScroll: { flexDirection: "row", marginBottom: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 15, backgroundColor: "#f1f5f9", marginRight: 6, borderWidth: 1, borderColor: "#e2e8f0" },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+    backgroundColor: "#f1f5f9",
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
   badgeActive: { backgroundColor: MJM_BLUE, borderColor: MJM_BLUE },
   badgeActiveVehiculo: { backgroundColor: "#10b981", borderColor: "#10b981" },
   badgeText: { fontSize: 11, color: "#334155", fontWeight: "600" },

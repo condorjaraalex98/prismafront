@@ -24,14 +24,7 @@ const MODULOS = [
     bg: "#fff9f2",
   },
 
-   {
-    id: "7",
-    nombre: "INICIO DE SERVICIO",
-    ruta: "/iniciodron",
-   icono: "play-circle",
-   color: "#0056b3",
-    bg: "#fff9f2",
-  }
+   
   
 ];
 
