@@ -119,14 +119,16 @@ export default function TabLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Drawer
-      
+  <Drawer
         drawerContent={(props) => <Sidebar {...props} isExpanded={!isMobile} />}
-        screenOptions={{ headerShown: false, drawerType: isMobile ? 'front' : 'permanent', swipeEnabled: true,
-          // 👈 AGREGA ESTO AQUÍ:
+        screenOptions={{
+          headerShown: isMobile,
+          header: ({ navigation }) => <MobileHeader navigation={navigation} />,
+          drawerType: isMobile ? 'front' : 'permanent',
+          swipeEnabled: true,
           drawerStyle: {
-            width: isMobile ? 250 :250, // Modifica estos valores para hacerlo más angosto o ancho
-            backgroundColor: '#004481',  // Mantiene tu color de fondo azul original
+            width: 250,
+            backgroundColor: '#004481',
           },
         }}
       >

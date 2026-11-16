@@ -19,8 +19,9 @@ export const Sidebar = (props: any) => {
   const { width } = useWindowDimensions();
 
   // ✅ Plataforma real (Web vs App Móvil) separada del tamaño de pantalla
-  const isWeb = Platform.OS === "web";
+ const isWeb = Platform.OS === "web";
   const isSmallScreen = width < 768;
+  const esMovil = !isWeb || isSmallScreen;
 
   const activeRoute = props.state?.routes[props.state.index]?.name;
   const [openSection, setOpenSection] = useState<string | null>(null);
@@ -67,9 +68,9 @@ export const Sidebar = (props: any) => {
     );
   }
 
-  const rol = userRolId as number;
-  const showMobileStats = rol === 1 || ((rol === 2 || rol === 3) && !isWeb);
-  const showWebStats = (rol === 1 || rol === 3) && isWeb;
+const rol = userRolId as number;
+  const showMobileStats = rol === 1 || ((rol === 2 || rol === 3) && esMovil);
+  const showWebStats = (rol === 1 || rol === 3) && !esMovil;
   const showOtros = showMobileStats || showWebStats;
 
   return (
@@ -94,8 +95,8 @@ export const Sidebar = (props: any) => {
 
         <View style={styles.divider} />
 
-        {/* ✅ SOLO MÓVIL: Reg. Campo (/principal) */}
-        {(userRolId === 3 || userRolId === 1) && !isWeb && (
+       {/* ✅ MÓVIL (APK o Chrome en celular < 768px): Reg. Campo (/principal) */}
+        {(userRolId === 2 ||userRolId === 3 || userRolId === 1) && esMovil && (
           <MenuOption
             icon="home-outline"
             label="Reg. Campo"
@@ -105,8 +106,8 @@ export const Sidebar = (props: any) => {
           />
         )}
 
-        {/* ✅ SOLO WEB: Reg. CECOM (/cecomdoceh) */}
-        {(userRolId === 3 || userRolId === 1 || userRolId === 2) && isWeb && (
+        {/* ✅ PC / LAPTOP (>= 768px en Web): Reg. CECOM (/cecomdoceh) */}
+        {(userRolId === 3 || userRolId === 1 || userRolId === 2) && !esMovil && (
           <MenuOption
             icon="home-outline"
             label="Reg. CECOM"
