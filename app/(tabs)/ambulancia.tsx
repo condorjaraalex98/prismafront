@@ -986,7 +986,7 @@ export default function RegistroOcurrencia() {
     </View>
   );
 
-  const textoCentral = "Por orden de la central";
+  const textoCentral = "POR ORDEN DE LA CENTRAL";
   const firmaCentralActiva = (form.descripcion || "").startsWith(textoCentral);
   const textoDescripcionLibre = firmaCentralActiva
     ? (form.descripcion || "")

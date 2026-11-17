@@ -43,6 +43,7 @@ interface Ocurrencia {
   id_usuario: string;
   nombre_informante: string;
   modalidad_nombre: string;
+    turno: string;
   via_nombre?: string;
   camaras?: string[];
   fotos_json?: string | string[];
@@ -143,7 +144,37 @@ const formatearFechaRegistro = (fechaReporte?: string, fallbackEvento?: string):
 export default function ReportesWebScreen() {
   const { userData } = useAuth();
   const userIdStable = userData?.id || null;
+const obtenerEstiloTurno = (turno: string | undefined | null) => {
+  // Limpiamos espacios y pasamos a minúsculas para evitar errores por mayúsculas/minúsculas
+  const t = turno?.trim().toLowerCase();
 
+  switch (t) {
+    case "m": // Mañana
+      return {
+        backgroundColor: "#f0f9ff", // Fondo azul muy sutil
+      
+        color: "#0f172a",           // Texto oscuro sobrio
+      };
+    case "t": // Tarde
+      return {
+        backgroundColor: "#fffbeb", // Fondo ámbar muy sutil
+     
+        color: "#0f172a",
+      };
+    case "n": // Noche
+      return {
+        backgroundColor: "#eef2ff", // Fondo índigo muy sutil
+     
+        color: "#0f172a",
+      };
+    default: // Por defecto (si está vacío o no coincide)
+      return {
+        backgroundColor: "#f8fafc",
+        borderLeftColor: "#cbd5e1",
+        color: "#64748b",
+      };
+  }
+};
   const [loading, setLoading] = useState(false);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [subiendoFotoEdicion, setSubiendoFotoEdicion] = useState(false);
@@ -748,12 +779,13 @@ export default function ReportesWebScreen() {
               <tr style={styles.thead}>
                 <th style={{ ...styles.th, width: "4%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>N°</th>
                 <th style={{ ...styles.th, width: "12%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>FECHA REGISTRO</th>
+                                <th style={{ ...styles.th, width: "2%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>TURNO</th>
                 <th style={{ ...styles.th, width: "15%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>PERSONAL</th>
                 <th style={{ ...styles.th, width: "10%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>ORIGEN</th>
                 <th style={{ ...styles.th, width: "18%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>MODALIDAD</th>
                 <th style={{ ...styles.th, width: "7%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>FECHA</th>
                 <th style={{ ...styles.th, width: "5%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>HORA</th>
-                <th style={{ ...styles.th, width: "19%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>UBICACIÓN</th>
+                <th style={{ ...styles.th, width: "17%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>UBICACIÓN</th>
                 <th
                   style={{
                     ...styles.th,
@@ -832,6 +864,47 @@ export default function ReportesWebScreen() {
                         </div>
                       </td>
 
+{(() => {
+  const estiloTurno = obtenerEstiloTurno(item.turno);
+
+  return (
+    <td
+      style={{
+        ...styles.td,
+        borderRight: "1px solid #e2e8f0",
+        borderLeft: `3px solid ${estiloTurno.borderLeftColor}`,
+        overflow: "hidden",
+        backgroundColor: estiloTurno.backgroundColor,
+        // Opcional por si la celda misma necesita altura para centrar verticalmente:
+        height: "100%", 
+      }}
+    >
+      <div 
+        style={{
+          ...styles.celdaTruncadaContainer,
+          display: "flex",           // <--- Activamos Flexbox
+          justifyContent: "center",  // <--- Centra horizontalmente
+          alignItems: "center",      // <--- Centra verticalmente
+          width: "100%",
+          height: "100%",
+        }}
+      >
+        <div
+          style={{
+            ...styles.txtB,
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+            color: estiloTurno.color,
+            fontWeight: 600,
+            textAlign: "center",     // <--- Asegura que el texto multilínea también esté centrado
+          }}
+        >
+          {item.turno || "---"}
+        </div>
+      </div>
+    </td>
+  );
+})()}
                       <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
                         <div style={styles.celdaTruncadaContainer}>
                           <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }} title={item.persona_nombre_completo}>

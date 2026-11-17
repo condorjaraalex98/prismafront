@@ -70,7 +70,7 @@ export default function HomeScreen() {
       const data = await response.json();
 
     if (response.ok) {
-        login(data);
+    await login(data);
 
       const rol = Number(data.id_rol);
         const esNavegadorMovil =

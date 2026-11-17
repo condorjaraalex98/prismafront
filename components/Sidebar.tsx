@@ -270,22 +270,8 @@ const rol = userRolId as number;
             isOpen={openSection === "matriz"}
             onToggle={() => handleToggleSection("matriz")}
           >
-            <MenuOption
-              icon="play-circle-outline"
-              label="Inicio de Servicio"
-              isActive={activeRoute === "iniciocecom"}
-              isExpanded={true}
-              onPress={() => navigateTo("iniciocecom")}
-              isSubItem
-            />
-            <MenuOption
-              icon="location-outline"
-              label="cecom"
-              isActive={activeRoute === "cecom"}
-              isExpanded={true}
-              onPress={() => navigateTo("cecom")}
-              isSubItem
-            />
+           
+          
             <MenuOption
               icon="radio-outline"
               label="Principal"
@@ -332,21 +318,13 @@ const rol = userRolId as number;
             isOpen={openSection === "SIPCOP"}
             onToggle={() => handleToggleSection("SIPCOP")}
           >
-            <MenuOption
-              icon="calendar-outline"
-              label="Rol de Servicio"
-              isActive={activeRoute === "rolservicio"}
+          
+           <MenuOption
+              icon="location-outline"
+              label="Descarga"
+              isActive={activeRoute === "cecom"}
               isExpanded={true}
-              onPress={() => navigateTo("rolservicio")}
-              isSubItem
-            />
-            
-            <MenuOption
-              icon="documents-outline"
-              label="Sipcop2"
-              isActive={activeRoute === "sipcopd"}
-              isExpanded={true}
-              onPress={() => navigateTo("sipcopd")}
+              onPress={() => navigateTo("cecom")}
               isSubItem
             />
             <MenuOption

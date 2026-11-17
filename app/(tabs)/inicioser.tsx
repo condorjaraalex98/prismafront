@@ -90,10 +90,14 @@ const normalizeText = (text: string): string =>
     .replace(/[\u0300-\u036f]/g, "");
 
 const formatearDateAYYYYMMDD = (d: Date): string => {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const valores = Object.fromEntries(partes.map((parte) => [parte.type, parte.value]));
+  return `${valores.year}-${valores.month}-${valores.day}`;
 };
 
 const mostrarAlerta = (titulo: string, mensaje: string) => {
@@ -109,12 +113,19 @@ const conTimeout = <T,>(
   ms: number,
   mensajeError: string
 ): Promise<T> =>
-  Promise.race([
-    promesa,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(mensajeError)), ms)
-    ),
-  ]);
+  new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(new Error(mensajeError)), ms);
+    promesa.then(
+      (resultado) => {
+        clearTimeout(timeoutId);
+        resolve(resultado);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
 
 export default function RegistroInicioServicio() {
   const insets = useSafeAreaInsets();
@@ -142,9 +153,10 @@ export default function RegistroInicioServicio() {
   const [isFinished, setIsFinished] = useState(false);
 
 const [showPicker, setShowPicker] = useState(false);
-const [pickerMode, setPickerMode] = useState<"time" | "date">("time"); // 👈 Agrega esta línea
+const [pickerMode] = useState<"time" | "date">("time");
 const [tempDate, setTempDate] = useState<Date>(new Date());
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [checklistRespuestas, setChecklistRespuestas] = useState<
     Record<number, Respuesta>
   >({});
@@ -221,7 +233,11 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
   const catalogosCargadosRef = useRef(false);
   const isMountedRef = useRef(true);
   const submittingRef = useRef(false);
-  const activeUploadControllersRef = useRef<Set<AbortController>>(new Set());
+  const activeUploadControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const uploadTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const uploadsCanceladosRef = useRef<Set<string>>(new Set());
+  const submitControllerRef = useRef<AbortController | null>(null);
+  const activeRequestControllersRef = useRef<Map<string, AbortController>>(new Map());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webCameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -242,8 +258,14 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     return () => {
       isMountedRef.current = false;
       limpiarTimers();
-      activeUploadControllersRef.current.forEach((c) => c.abort());
+      submitControllerRef.current?.abort();
+      submitControllerRef.current = null;
+      activeUploadControllersRef.current.forEach((controller) => controller.abort());
       activeUploadControllersRef.current.clear();
+      uploadTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+      uploadTimeoutsRef.current.clear();
+      activeRequestControllersRef.current.forEach((controller) => controller.abort());
+      activeRequestControllersRef.current.clear();
       fotosRef.current.forEach((f) => liberarUriPreview(f.uri));
     };
   }, [liberarUriPreview, limpiarTimers]);
@@ -394,15 +416,14 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
           }),
         ]);
 
+      const respuestas = [resGral, resTiposV, resTiposL, resPnps, resRadios, resZonas];
+      const respuestaFallida = respuestas.find((respuesta) => !respuesta.ok);
+      if (respuestaFallida) {
+        throw new Error(`Error HTTP ${respuestaFallida.status} al cargar catálogos.`);
+      }
+
       const [dataGral, dataTiposV, dataTiposL, dataPnps, dataRadios, dataZonas] =
-        await Promise.all([
-          resGral.json(),
-          resTiposV.json(),
-          resTiposL.json(),
-          resPnps.json(),
-          resRadios.json(),
-          resZonas.json(),
-        ]);
+        await Promise.all(respuestas.map((respuesta) => respuesta.json()));
 
       if (!isMountedRef.current) return;
       catalogosCargadosRef.current = true;
@@ -575,54 +596,111 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
   const handleTipoLugarChange = async (idTipoLugar: any) => {
     setSelTipoLugar(idTipoLugar);
     setForm((f) => ({ ...f, id_lugar: null }));
+    activeRequestControllersRef.current.get("lugares")?.abort();
+    const controller = new AbortController();
+    activeRequestControllersRef.current.set("lugares", controller);
+
     try {
       const res = await fetch(
-        `${API_URL}/catalogos/lugares?tipo=${idTipoLugar}`
+        `${API_URL}/catalogos/lugares?tipo=${encodeURIComponent(String(idTipoLugar))}`,
+        { signal: controller.signal }
       );
+      if (!res.ok) throw new Error(`Error HTTP ${res.status} al cargar lugares.`);
       const data = await res.json();
-      if (isMountedRef.current) {
-        setCuadras(data || []);
+      if (
+        isMountedRef.current &&
+        activeRequestControllersRef.current.get("lugares") === controller
+      ) {
+        setCuadras(Array.isArray(data) ? data : []);
       }
-    } catch (err) {
-      console.error("Error cargando lugares por tipo:", err);
-      if (isMountedRef.current) setCuadras([]);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        console.error("Error cargando lugares por tipo:", err);
+        if (isMountedRef.current && activeRequestControllersRef.current.get("lugares") === controller) {
+          setCuadras([]);
+        }
+      }
+    } finally {
+      if (activeRequestControllersRef.current.get("lugares") === controller) {
+        activeRequestControllersRef.current.delete("lugares");
+      }
     }
   };
 
   const fetchUnidades = async (idTipo: any) => {
+    activeRequestControllersRef.current.get("unidades")?.abort();
+    const controller = new AbortController();
+    activeRequestControllersRef.current.set("unidades", controller);
+
     try {
       const res = await fetch(
-        `${API_URL}/catalogos/vehiculos-por-tipo/${idTipo}`
+        `${API_URL}/catalogos/vehiculos-por-tipo/${encodeURIComponent(String(idTipo))}`,
+        { signal: controller.signal }
       );
+      if (!res.ok) throw new Error(`Error HTTP ${res.status} al cargar unidades.`);
       const data = await res.json();
-      if (isMountedRef.current) {
-        setCatalogos((prev) => ({ ...prev, unidades: data || [] }));
+      if (
+        isMountedRef.current &&
+        activeRequestControllersRef.current.get("unidades") === controller
+      ) {
+        setCatalogos((prev) => ({ ...prev, unidades: Array.isArray(data) ? data : [] }));
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      if (e?.name !== "AbortError") console.error("Error cargando unidades:", e);
+    } finally {
+      if (activeRequestControllersRef.current.get("unidades") === controller) {
+        activeRequestControllersRef.current.delete("unidades");
+      }
     }
   };
 
   const cargarChecklist = async (idTipoVehiculo: string | number) => {
+    activeRequestControllersRef.current.get("checklist")?.abort();
+    const controller = new AbortController();
+    activeRequestControllersRef.current.set("checklist", controller);
+    setLoadingChecklist(true);
+    setChecklistItems([]);
+
     try {
       const response = await fetch(
-        `${API_URL}/catalogos/checklist-itemsfiltro1?id_tipo_vehiculo=${idTipoVehiculo}`
+        `${API_URL}/catalogos/checklist-itemsfiltro1?id_tipo_vehiculo=${encodeURIComponent(String(idTipoVehiculo))}`,
+        { signal: controller.signal }
       );
+      if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar checklist.`);
       const data = await response.json();
-      if (isMountedRef.current) setChecklistItems(data || []);
-    } catch (error) {
-      console.error("Error al cargar checklist:", error);
+      if (
+        isMountedRef.current &&
+        activeRequestControllersRef.current.get("checklist") === controller
+      ) {
+        setChecklistItems(Array.isArray(data) ? data : []);
+      }
+    } catch (error: any) {
+      if (error?.name !== "AbortError") {
+        console.error("Error al cargar checklist:", error);
+        if (isMountedRef.current && activeRequestControllersRef.current.get("checklist") === controller) {
+          mostrarAlerta("Error", "No se pudo cargar el checklist de la unidad.");
+        }
+      }
+    } finally {
+      if (activeRequestControllersRef.current.get("checklist") === controller) {
+        activeRequestControllersRef.current.delete("checklist");
+        if (isMountedRef.current) setLoadingChecklist(false);
+      }
     }
   };
 
   const abrirChecklist = (unidad: Unidad) => {
     setUnidadTemporal(unidad);
     setChecklistRespuestas({});
-    cargarChecklist(unidad.id_tipo_vehiculo);
+    setOdometroInicial("");
     setModalChecklistVisible(true);
+    void cargarChecklist(unidad.id_tipo_vehiculo);
   };
 
   const confirmarChecklistUnidad = () => {
+    if (loadingChecklist) {
+      return mostrarAlerta("Espere", "El checklist todavía se está cargando.");
+    }
     if (!odometroInicial.trim()) {
       return mostrarAlerta("Atención", "Ingrese el odómetro inicial.");
     }
@@ -706,17 +784,15 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
         ...fotosRef.current.map((f) => f.id),
         ...idsEnProcesoRef.current,
       ]);
-      if (idsTotales.size >= MAX_FOTOS) {
-        return;
-      }
+      if (idsTotales.size >= MAX_FOTOS) return;
 
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       idsEnProcesoRef.current.add(id);
 
+      const uploadController = new AbortController();
+      activeUploadControllersRef.current.set(id, uploadController);
       let uriPreview = "";
       let subidaExitosa = false;
-      const uploadController = new AbortController();
-      let uploadTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
       try {
         const fotoProcesada = await conTimeout(
@@ -725,23 +801,23 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
           "La compresión de la imagen tardó demasiado."
         );
 
+        if (uploadController.signal.aborted || !isMountedRef.current) return;
+
         uriPreview =
           typeof fotoProcesada === "string"
             ? fotoProcesada
             : URL.createObjectURL(fotoProcesada as Blob);
-
-        if (!isMountedRef.current) {
-          liberarUriPreview(uriPreview);
-          return;
-        }
 
         setFotos((prev) => [
           ...prev,
           { id, uri: uriPreview, url_remota: null, uploading: true },
         ]);
 
-        activeUploadControllersRef.current.add(uploadController);
-        uploadTimeoutId = setTimeout(() => uploadController.abort(), 25000);
+        const uploadTimeoutId = setTimeout(
+          () => uploadController.abort(),
+          25000
+        );
+        uploadTimeoutsRef.current.set(id, uploadTimeoutId);
 
         const urlRemota = await subirFotoAlServidor(
           fotoProcesada,
@@ -751,43 +827,59 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
           uploadController.signal
         );
 
+        if (uploadController.signal.aborted || !isMountedRef.current) return;
         if (!urlRemota) {
           throw new Error("El servidor no devolvió la URL de la imagen.");
         }
 
-        if (!isMountedRef.current) {
-          liberarUriPreview(uriPreview);
-          return;
-        }
-
         subidaExitosa = true;
         setFotos((prev) =>
-          prev.map((f) =>
-            f.id === id ? { ...f, url_remota: urlRemota, uploading: false } : f
+          prev.map((foto) =>
+            foto.id === id
+              ? { ...foto, url_remota: urlRemota, uploading: false }
+              : foto
           )
         );
       } catch (err: any) {
-        const msg =
-          err?.name === "AbortError"
-            ? "La subida al servidor tardó demasiado."
-            : err?.message || "Una imagen no pudo procesarse o subirse.";
-        console.error("Error al procesar/subir imagen:", err);
-        if (uriPreview) {
-          liberarUriPreview(uriPreview);
+        const fueCancelada =
+          uploadController.signal.aborted || uploadsCanceladosRef.current.has(id);
+        if (!fueCancelada) {
+          const msg = err?.message || "Una imagen no pudo procesarse o subirse.";
+          console.error("Error al procesar/subir imagen:", err);
+          if (isMountedRef.current) mostrarAlerta("Error al subir imagen", msg);
         }
-        if (isMountedRef.current) {
-          mostrarAlerta("Error al subir imagen", msg);
-        }
+        if (uriPreview) liberarUriPreview(uriPreview);
       } finally {
         idsEnProcesoRef.current.delete(id);
-        if (uploadTimeoutId) clearTimeout(uploadTimeoutId);
-        activeUploadControllersRef.current.delete(uploadController);
+        const timeoutId = uploadTimeoutsRef.current.get(id);
+        if (timeoutId) clearTimeout(timeoutId);
+        uploadTimeoutsRef.current.delete(id);
+        activeUploadControllersRef.current.delete(id);
+        uploadsCanceladosRef.current.delete(id);
+
         if (!subidaExitosa && isMountedRef.current) {
-          setFotos((prev) => prev.filter((f) => f.id !== id));
+          setFotos((prev) => prev.filter((foto) => foto.id !== id));
         }
       }
     },
     [form.id_modalidad, form.fecha_evento, liberarUriPreview]
+  );
+
+  const eliminarFoto = useCallback(
+    (id: string) => {
+      uploadsCanceladosRef.current.add(id);
+      activeUploadControllersRef.current.get(id)?.abort();
+
+      const timeoutId = uploadTimeoutsRef.current.get(id);
+      if (timeoutId) clearTimeout(timeoutId);
+      uploadTimeoutsRef.current.delete(id);
+
+      const foto = fotosRef.current.find((item) => item.id === id);
+      if (foto) liberarUriPreview(foto.uri);
+
+      setFotos((prev) => prev.filter((item) => item.id !== id));
+    },
+    [liberarUriPreview]
   );
 
   const tomarFoto = async () => {
@@ -877,6 +969,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
     );
 
     const controller = new AbortController();
+    submitControllerRef.current = controller;
     const requestTimeout = setTimeout(() => controller.abort(), 30000);
 
     try {
@@ -941,6 +1034,9 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
       );
     } finally {
       clearTimeout(requestTimeout);
+      if (submitControllerRef.current === controller) {
+        submitControllerRef.current = null;
+      }
     }
   };
 
@@ -989,7 +1085,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
     borderWidth: value ? 1.5 : 1,
   });
 
-  const textoCentralFirma = "inicio de servicio";
+  const textoCentralFirma = "Inicio de servicio";
   const firmaActiva = (form.descripcion || "").startsWith(textoCentralFirma);
   const textoDescripcionLibre = firmaActiva
     ? (form.descripcion || "")
@@ -1270,7 +1366,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                             const nuevos = form.vehiculos_detalle.filter(
                               (_, i) => i !== index
                             );
-                            setForm({ ...form, vehiculos_detalle: nuevos });
+                            setForm((prev) => ({ ...prev, vehiculos_detalle: nuevos }));
                             setUnidadForm({
                               id_tipo_vehiculo: null,
                               id_unidad: null,
@@ -1677,7 +1773,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                     paddingVertical: 4,
                     borderRadius: 6,
                   }}
-                  onPress={() => setForm({ ...form, id_radio: 110 })}
+                  onPress={() => setForm((prev) => ({ ...prev, id_radio: 110 }))}
                 >
                   <ThemedText
                     style={{
@@ -1712,12 +1808,12 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                 onFocus={() => {
                   setForm((prev) => ({ ...prev, id_radio: null }));
                 }}
-                onChange={(v) => setForm({ ...form, id_radio: v.value })}
+                onChange={(v) => setForm((prev) => ({ ...prev, id_radio: v.value }))}
                 placeholderStyle={{ color: "#666", fontSize: 14 }}
                 selectedTextStyle={{
                   color: "#000",
                   fontSize: 14,
-                  fontWeight: "bold",
+                 
                 }}
                 flatListProps={{
                   nestedScrollEnabled: true,
@@ -1757,12 +1853,12 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                 onFocus={() => {
                   setForm((prev) => ({ ...prev, id_zona: null }));
                 }}
-                onChange={(v) => setForm({ ...form, id_zona: v.value })}
+                onChange={(v) => setForm((prev) => ({ ...prev, id_zona: v.value }))}
                 placeholderStyle={{ color: "#666", fontSize: 14 }}
                 selectedTextStyle={{
                   color: "#000",
                   fontSize: 14,
-                  fontWeight: "bold",
+              
                 }}
                 flatListProps={{
                   nestedScrollEnabled: true,
@@ -1833,7 +1929,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                     color: firmaActiva ? "#FFF" : MJM_BLUE,
                   }}
                 >
-                  inicio de servicio
+                  Inicio de servicio
                 </ThemedText>
               </Pressable>
 
@@ -1966,10 +2062,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                     )}
                     <Pressable
                       style={styles.btnBorrarFoto}
-                      onPress={() => {
-                        liberarUriPreview(f.uri);
-                        setFotos((p) => p.filter((_, idx) => idx !== i));
-                      }}
+                      onPress={() => eliminarFoto(f.id)}
                     >
                       <Ionicons name="close-circle" size={20} color="red" />
                     </Pressable>
@@ -2178,6 +2271,14 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
               </Pressable>
             </View>
 
+            {loadingChecklist && (
+              <View style={{ padding: 18, alignItems: "center" }}>
+                <ActivityIndicator color={MJM_BLUE} />
+                <ThemedText style={{ marginTop: 8, color: "#666" }}>
+                  Cargando checklist...
+                </ThemedText>
+              </View>
+            )}
             <ScrollView
               style={{ padding: 20 }}
               showsVerticalScrollIndicator={false}
@@ -2387,13 +2488,14 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
               }}
             >
               <Pressable
+                onPress={confirmarChecklistUnidad}
+                disabled={loadingChecklist}
                 style={{
-                  backgroundColor: MJM_BLUE,
+                  backgroundColor: loadingChecklist ? "#94a3b8" : MJM_BLUE,
                   paddingVertical: 15,
                   borderRadius: 12,
                   alignItems: "center",
                 }}
-                onPress={confirmarChecklistUnidad}
               >
                 <ThemedText
                   style={{ color: "white", fontWeight: "bold", fontSize: 16 }}

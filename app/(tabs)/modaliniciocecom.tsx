@@ -1264,7 +1264,7 @@ export default function RegistroSerIn({
                                     selectedTextStyle={{
                                       color: "#000",
                                       fontSize: 14,
-                                      fontWeight: "bold",
+                                   
                                     }}
                                     flatListProps={{
                                       nestedScrollEnabled: true,
@@ -1305,7 +1305,7 @@ export default function RegistroSerIn({
                                     selectedTextStyle={{
                                       color: "#000",
                                       fontSize: 14,
-                                      fontWeight: "bold",
+                               
                                     }}
                                     flatListProps={{
                                       nestedScrollEnabled: true,
@@ -1719,13 +1719,13 @@ const webReadonlyInputStyle: CSSProperties = {
 };
 
 export const styles = StyleSheet.create({
-  modalOverlay: {
+modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.45)",
     justifyContent: "center",
-    alignItems: Platform.OS === "web" ? "flex-start" : "center",
+    alignItems: "flex-end", // Mantiene el anclaje a la derecha
+    paddingRight: 280,      // <--- Aumenta este número para mover el modal más a la izquierda (antes 200)
     padding: Platform.OS === "web" ? 20 : 10,
-    paddingLeft: Platform.OS === "web" ? "15%" : 10,
   },
   modalContent: {
     backgroundColor: "white",

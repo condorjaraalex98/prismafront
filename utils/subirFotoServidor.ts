@@ -1,3 +1,4 @@
+
 import { Platform } from "react-native";
 import { File } from "expo-file-system";
 
@@ -8,31 +9,55 @@ export const subirFotoAlServidor = async (
   fechaEvento?: string,
   signal?: AbortSignal
 ): Promise<string> => {
-  const uploadUrl = `${apiUrl.replace(/\/+$/, "")}/ocurrencias/subir-foto-adjunta`;
+  const uploadUrl =
+    `${apiUrl.replace(/\/+$/, "")}/ocurrencias/subir-foto-adjunta`;
+
   const formData = new FormData();
 
   if (Platform.OS === "web") {
     let blob: Blob;
+
     if (fotoProcesada instanceof Blob) {
       blob = fotoProcesada;
     } else {
-      const resBlob = await fetch(fotoProcesada, { signal });
-      blob = await resBlob.blob();
+      const respuestaArchivo = await fetch(fotoProcesada, { signal });
+
+      if (!respuestaArchivo.ok) {
+        throw new Error(
+          `No se pudo leer la imagen local (${respuestaArchivo.status}).`
+        );
+      }
+
+      blob = await respuestaArchivo.blob();
     }
-    const ext = blob.type?.split("/")[1] || "jpg";
-    formData.append("foto", blob, `foto.${ext}`);
+
+    if (!blob.size) {
+      throw new Error("La imagen está vacía.");
+    }
+
+    if (!blob.type.startsWith("image/")) {
+      throw new Error("El archivo seleccionado no es una imagen válida.");
+    }
+
+    formData.append("foto", blob, "foto.jpg");
   } else {
-    const uriLocal = fotoProcesada as string;
+    if (typeof fotoProcesada !== "string" || !fotoProcesada) {
+      throw new Error("No se recibió la ruta local de la imagen.");
+    }
+
     const uriFinal =
-      uriLocal.startsWith("file://") || uriLocal.startsWith("content://")
-        ? uriLocal
-        : `file://${uriLocal}`;
+      fotoProcesada.startsWith("file://") ||
+      fotoProcesada.startsWith("content://")
+        ? fotoProcesada
+        : `file://${fotoProcesada}`;
+
     formData.append("foto", new File(uriFinal) as any);
   }
 
   if (idModalidad !== undefined && idModalidad !== "") {
     formData.append("id_modalidad", String(idModalidad));
   }
+
   if (fechaEvento) {
     formData.append("fecha_evento", String(fechaEvento));
   }
@@ -44,23 +69,27 @@ export const subirFotoAlServidor = async (
   });
 
   const rawText = await response.text();
+
   let data: any = null;
+
   try {
     data = rawText ? JSON.parse(rawText) : null;
   } catch {
-    // Respuesta HTML/texto (413, 502, 504)
+    // El servidor pudo devolver HTML o texto en un error 413, 502 o 504.
   }
 
-  if (!response.ok || !data?.success) {
+  if (!response.ok) {
     throw new Error(
       data?.message ||
         data?.error ||
-        `Error HTTP ${response.status} al subir la imagen al servidor`
+        `Error HTTP ${response.status} al subir la imagen.`
     );
   }
 
-  if (!data.url_imagen) {
-    throw new Error("El servidor no devolvió url_imagen");
+  if (!data?.success || !data?.url_imagen) {
+    throw new Error(
+      data?.message || "El servidor no devolvió la URL de la imagen."
+    );
   }
 
   return data.url_imagen;

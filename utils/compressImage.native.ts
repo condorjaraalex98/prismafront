@@ -1,28 +1,46 @@
+
 import { Image } from "react-native";
 import * as ImageManipulator from "expo-image-manipulator";
 
 const MAX_WIDTH = 1200;
 
-const obtenerAncho = (uri: string): Promise<number | null> =>
+const obtenerDimensiones = (
+  uri: string
+): Promise<{ width: number; height: number } | null> =>
   new Promise((resolve) => {
     Image.getSize(
       uri,
-      (width) => resolve(width),
+      (width, height) => resolve({ width, height }),
       () => resolve(null)
     );
   });
 
-export const comprimirImagen = async (uri: string): Promise<string> => {
-  const width = await obtenerAncho(uri);
+export const comprimirImagen = async (
+  uri: string
+): Promise<string> => {
+  if (!uri) {
+    throw new Error("No se recibió la ruta de la imagen.");
+  }
+
+  const dimensiones = await obtenerDimensiones(uri);
+
   const actions: ImageManipulator.Action[] =
-    width === null || width > MAX_WIDTH
+    dimensiones && dimensiones.width > MAX_WIDTH
       ? [{ resize: { width: MAX_WIDTH } }]
       : [];
 
-  const result = await ImageManipulator.manipulateAsync(uri, actions, {
-    compress: 0.75,
-    format: ImageManipulator.SaveFormat.JPEG,
-  });
+  const resultado = await ImageManipulator.manipulateAsync(
+    uri,
+    actions,
+    {
+      compress: 0.75,
+      format: ImageManipulator.SaveFormat.JPEG,
+    }
+  );
 
-  return result.uri;
+  if (!resultado?.uri) {
+    throw new Error("No se pudo generar la imagen comprimida.");
+  }
+
+  return resultado.uri;
 };

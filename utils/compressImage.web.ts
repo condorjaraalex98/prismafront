@@ -1,35 +1,55 @@
+
 export const comprimirImagen = async (
   input: File | Blob | string
 ): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const esString = typeof input === "string";
-    const objectUrl = esString ? input : URL.createObjectURL(input);
+    const objectUrl = esString
+      ? input
+      : URL.createObjectURL(input);
+
+    let terminado = false;
 
     const limpiar = () => {
+      if (terminado) return;
+      terminado = true;
+
       if (!esString) {
         URL.revokeObjectURL(objectUrl);
       }
+
+      image.onload = null;
+      image.onerror = null;
     };
 
     image.onload = () => {
       try {
-        const canvas = document.createElement("canvas");
-        let { width, height } = image;
-        const maxWidth = 1200;
-
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
+        if (!image.naturalWidth || !image.naturalHeight) {
+          throw new Error("La imagen no tiene dimensiones válidas.");
         }
 
+        const maxWidth = 1200;
+        const escala = Math.min(1, maxWidth / image.naturalWidth);
+
+        const width = Math.max(
+          1,
+          Math.round(image.naturalWidth * escala)
+        );
+
+        const height = Math.max(
+          1,
+          Math.round(image.naturalHeight * escala)
+        );
+
+        const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
 
         const ctx = canvas.getContext("2d");
+
         if (!ctx) {
-          limpiar();
-          return reject(new Error("No se pudo obtener el contexto 2D de Canvas"));
+          throw new Error("No se pudo crear el contexto Canvas.");
         }
 
         ctx.fillStyle = "#FFFFFF";
@@ -42,23 +62,25 @@ export const comprimirImagen = async (
             canvas.width = 0;
             canvas.height = 0;
 
-            if (!blob) {
-              return reject(new Error("Error al convertir a Blob"));
+            if (!blob || blob.size === 0) {
+              reject(new Error("No se pudo comprimir la imagen."));
+              return;
             }
+
             resolve(blob);
           },
           "image/jpeg",
           0.75
         );
-      } catch (err) {
+      } catch (error) {
         limpiar();
-        reject(err);
+        reject(error);
       }
     };
 
-    image.onerror = (err) => {
+    image.onerror = () => {
       limpiar();
-      reject(err);
+      reject(new Error("No se pudo abrir la imagen seleccionada."));
     };
 
     image.src = objectUrl;

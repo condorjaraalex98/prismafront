@@ -43,6 +43,11 @@ interface Ocurrencia {
   mod_patrullaje_nombre?: string;
   value?: number;
   label?: string;
+  turno?: string;
+  turnr: string;
+  turnrm: string;
+   turno_coincide: string;
+    turnor_coincide?: string;
   total_fotos?: number;
   foto_principal?: string;
   pnp_nombre_completo?: string;
@@ -249,7 +254,37 @@ export default function ReportesWebScreen() {
     const fechaNumerica = fechaObjReal.toLocaleDateString("es-PE");
     return `${diaSemana} ${fechaNumerica}`;
   }, []);
+const obtenerEstiloTurno = (turno: string | undefined | null) => {
+  // Limpiamos espacios y pasamos a minúsculas para evitar errores por mayúsculas/minúsculas
+  const t = turno?.trim().toLowerCase();
 
+  switch (t) {
+    case "m": // Mañana
+      return {
+        backgroundColor: "#f0f9ff", // Fondo azul muy sutil
+      
+        color: "#0f172a",           // Texto oscuro sobrio
+      };
+    case "t": // Tarde
+      return {
+        backgroundColor: "#fffbeb", // Fondo ámbar muy sutil
+     
+        color: "#0f172a",
+      };
+    case "n": // Noche
+      return {
+        backgroundColor: "#eef2ff", // Fondo índigo muy sutil
+     
+        color: "#0f172a",
+      };
+    default: // Por defecto (si está vacío o no coincide)
+      return {
+        backgroundColor: "#f8fafc",
+        borderLeftColor: "#cbd5e1",
+        color: "#64748b",
+      };
+  }
+};
   const fetchLugares = useCallback(async () => {
     if (lugaresCargadosRef.current) return;
     const controller = new AbortController();
@@ -781,6 +816,9 @@ export default function ReportesWebScreen() {
                 <th style={{ ...styles.th, width: "11%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
                   FECHA REGISTRO
                 </th>
+                  <th style={{ ...styles.th, width: "1.5%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
+                  T
+                </th>
                 <th style={{ ...styles.th, width: "15%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
                   PERSONAL
                 </th>
@@ -796,9 +834,15 @@ export default function ReportesWebScreen() {
                 <th style={{ ...styles.th, width: "5%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
                   HORA
                 </th>
-                <th style={{ ...styles.th, width: "21%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
+   
+                <th style={{ ...styles.th, width: "13%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
                   UBICACIÓN
+                </th><th style={{ ...styles.th, width: "1.5%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
+                  T. G.
                 </th>
+                  <th style={{ ...styles.th, width: "1.5%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
+                  VAL
+                </th> 
                 <th style={{ ...styles.th, width: "4%", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
                   FOTOS
                 </th>
@@ -870,14 +914,64 @@ export default function ReportesWebScreen() {
                         </div>
                       </td>
 
+
+ 
+{(() => {
+  const estiloTurno = obtenerEstiloTurno(item.turno);
+
+  return (
+    <td
+      style={{
+        ...styles.td,
+        borderRight: "1px solid #e2e8f0",
+        borderLeft: `3px solid ${estiloTurno.borderLeftColor}`,
+        overflow: "hidden",
+        backgroundColor: estiloTurno.backgroundColor,
+        // Opcional por si la celda misma necesita altura para centrar verticalmente:
+        height: "100%", 
+      }}
+    >
+      <div 
+        style={{
+          ...styles.celdaTruncadaContainer,
+          display: "flex",           // <--- Activamos Flexbox
+          justifyContent: "center",  // <--- Centra horizontalmente
+          alignItems: "center",      // <--- Centra verticalmente
+          width: "100%",
+          height: "100%",
+        }}
+      >
+        <div
+          style={{
+            ...styles.txtB,
+            whiteSpace: "normal",
+            wordBreak: "break-word",
+            color: estiloTurno.color,
+            fontWeight: 600,
+            textAlign: "center",     // <--- Asegura que el texto multilínea también esté centrado
+          }}
+        >
+          {item.turno || "---"}
+        </div>
+      </div>
+    </td>
+  );
+})()}
+
+
                       <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
                         <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }}>
                           {item.persona_nombre_completo}
                         </div>
-                        <div style={{ ...styles.txtS, whiteSpace: "normal", wordBreak: "break-word" }}>
+                        
+                      
+                      
+                      <div style={{ ...styles.txtS, whiteSpace: "normal", wordBreak: "break-word" }}>
                           DNI: {item.persona_dni}
                         </div>
                       </td>
+
+  
 
                       <td style={{ ...styles.td, verticalAlign: "top", borderRight: "1px solid #e2e8f0" }}>
                         <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }}>
@@ -970,7 +1064,21 @@ export default function ReportesWebScreen() {
                           Ref: {item.referencia || "Sin referencia"}
                         </div>
                       </td>
+   <td style={{ ...styles.td, borderRight: "1px solid #e2e8f0", overflow: "hidden", backgroundColor: "#e8f5fd", borderLeft: "3px solid #024885" }}>
+                      <div style={styles.celdaTruncadaContainer}>
+                        <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word" }}>
+                          {item.turnr || item.turnrm || "---"}
+                        </div>
+                      </div>
+                    </td>
 
+                    <td style={{ ...styles.td, borderRight: "1px solid #e2e8f0", overflow: "hidden", backgroundColor: item.turno_coincide === "Sí" ? "#e6f4ea" : "#fce8e6", borderLeft: "3px solid #024885" }}>
+                      <div style={styles.celdaTruncadaContainer}>
+                        <div style={{ ...styles.txtB, whiteSpace: "normal", wordBreak: "break-word", fontWeight: "bold" }}>
+                          {item.turno_coincide}
+                        </div>
+                      </div>
+                    </td>
                       <td
                         style={{
                           ...styles.td,
