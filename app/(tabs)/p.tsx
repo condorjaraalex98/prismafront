@@ -32,24 +32,6 @@ import { Dropdown } from "react-native-element-dropdown";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/userContext";
 
-interface ChecklistItem {
-  id_item: number;
-  id_categoria: number;
-  nombre_categoria: string;
-  nombre_item: string;
-}
-
-interface Respuesta {
-  conforme: boolean;
-  obs: string;
-}
-
-interface Unidad {
-  id_unidad: string | number;
-  id_tipo_vehiculo: string | number;
-  placa: string;
-}
-
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
 
@@ -60,34 +42,28 @@ type FotoEstado = {
   uploading: boolean;
 };
 
+type PacienteForm = {
+  sexo: "" | "M" | "F";
+  nombres: string;
+  dni: string;
+  tipo_edad: "" | "M" | "m";
+  edad: string;
+  placa_victima: string;
+};
+
 const MJM_BLUE = "#024885";
-const ID_CAMIONETA = 1;
-const ID_MOTOCICLETA = 2;
+const ID_MOTOCICLETA = 2; // Solo Motos
 const ID_PATRULLAJE_MOTORIZADO = 3;
-const MAX_FOTOS = 1;
+const MAX_FOTOS = 4;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
-
-const ZONAS_POR_VEHICULO: Record<number, number[]> = {
-  [ID_CAMIONETA]: [1, 2, 3, 4, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  [ID_MOTOCICLETA]: [5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-};
-
-const ZONAS_POR_PATRULLAJE: Record<number, number[]> = {
-  1: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  2: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  4: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  5: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  6: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  8: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  3: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  7: [10, 11, 12, 13, 34, 35, 36, 37, 38, 39, 40, 41, 42],
-};
 
 const normalizeText = (text: string): string =>
   (text || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\./g, "")
+    .replace(/\b(pq|porque)\b/g, "parque");
 
 const formatearDateAYYYYMMDD = (d: Date): string => {
   const year = d.getFullYear();
@@ -116,7 +92,7 @@ const conTimeout = <T,>(
     ),
   ]);
 
-export default function RegistroInicioServicio() {
+export default function RegistroParamedico() {
   const insets = useSafeAreaInsets();
   const { userData } = useAuth();
   const router = useRouter();
@@ -131,65 +107,14 @@ export default function RegistroInicioServicio() {
 
   const getHoy = useCallback(() => formatearDateAYYYYMMDD(new Date()), []);
 
-  const [modoBusquedaManual, setModoBusquedaManual] = useState(false);
-  const [selTipoLugar, setSelTipoLugar] = useState<any>(null);
-  const [fotos, setFotos] = useState<FotoEstado[]>([]);
-
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState("Subiendo...");
-  const [isFinished, setIsFinished] = useState(false);
-
-const [showPicker, setShowPicker] = useState(false);
-const [pickerMode, setPickerMode] = useState<"time" | "date">("time"); // 👈 Agrega esta línea
-const [tempDate, setTempDate] = useState<Date>(new Date());
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
-  const [checklistRespuestas, setChecklistRespuestas] = useState<
-    Record<number, Respuesta>
-  >({});
-  const [modalChecklistVisible, setModalChecklistVisible] = useState(false);
-  const [mostrarFallas, setMostrarFallas] = useState(false);
-  const [odometroInicial, setOdometroInicial] = useState("");
-  const [unidadTemporal, setUnidadTemporal] = useState<any>(null);
-
-  const [modalPlacaVisible, setModalPlacaVisible] = useState(false);
-  const [busquedaPlaca, setBusquedaPlaca] = useState("");
-
-  const [cuadras, setCuadras] = useState<any[]>([]);
-
-  const [catalogos, setCatalogos] = useState({
-    usuarios: [] as any[],
-    modalidades: [] as any[],
-    origenes: [] as any[],
-    camaras: [] as any[],
-    tipos_patrullaje: [] as any[],
-    modalidades_patrullaje: [] as any[],
-    tipos_vehiculo: [] as any[],
-    unidades: [] as any[],
-    pnps: [] as any[],
-    lugares: [] as any[],
-    radios: [] as any[],
-    zonas: [] as any[],
-    tipos_lugar: [] as any[],
-  });
-
-  const [unidadForm, setUnidadForm] = useState({
-    id_tipo_vehiculo: null as number | null,
-    id_unidad: null as number | null,
-    placa: "",
-    tipo_asignacion: "MUNICIPAL" as "MUNICIPAL" | "INTEGRADO",
-    id_pnp: null as number | null,
-  });
-
   const ESTADO_INICIAL = useMemo(
     () => ({
       id_usuario: userIdStable as any,
-      id_lugar: null as string | null,
-      id_modalidad: "139",
-      id_origen: "9",
-      id_tipo_patrullaje: null as number | null,
-      id_modalidad_patrullaje: "2",
+      id_lugar: null as any,
+      id_modalidad: "137",
+      id_origen: "3",
+      id_tipo_patrullaje: null as any,
+      id_modalidad_patrullaje: "1",
       vehiculos_detalle: [] as any[],
       id_camara: [] as any[],
       descripcion: "",
@@ -202,15 +127,57 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
       nombre_punto_gps: "",
       estadoOcurrencia: "VERIFICADO",
       referencia: "",
-      id_radio: null as number | string | null,
-      id_zona: null as number | string | null,
       unidad_encargada: "SERENAZGO",
       fecha_evento: getHoy(),
       grupo: null as any,
-      sector_asignado: null as any,
+      victimas: [] as PacienteForm[],
+      datos_importantes: {
+        por_orden_central: false,
+        control_fv_sv: false,
+        inyectable: false,
+        curacion_topica: false,
+        traslado_urgencia: false,
+        pertenece_muni: false,
+      },
     }),
     [getHoy, userIdStable]
   );
+
+  const [modoBusquedaManual, setModoBusquedaManual] = useState(false);
+  const [fotos, setFotos] = useState<FotoEstado[]>([]);
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState("Subiendo...");
+  const [isFinished, setIsFinished] = useState(false);
+
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<"time" | "date">("time");
+  const [activeField, setActiveField] = useState<string | null>(null);
+  const [tempDate, setTempDate] = useState<Date>(new Date());
+
+  const [modalPlacaVisible, setModalPlacaVisible] = useState(false);
+  const [busquedaPlaca, setBusquedaPlaca] = useState("");
+
+  const [tiposVia, setTiposVia] = useState<any[]>([]);
+  const [vias, setVias] = useState<any[]>([]);
+  const [cuadras, setCuadras] = useState<any[]>([]);
+  const [selTipoVia, setSelTipoVia] = useState<any>(null);
+  const [selVia, setSelVia] = useState<any>(null);
+
+  const [catalogos, setCatalogos] = useState({
+    tipos_patrullaje: [] as any[],
+    unidades: [] as any[],
+    lugares: [] as any[],
+  });
+
+  const [unidadForm, setUnidadForm] = useState({
+    id_tipo_vehiculo: ID_MOTOCICLETA as number | null,
+    id_unidad: null as number | null,
+    placa: "",
+    tipo_asignacion: "MUNICIPAL" as "MUNICIPAL" | "INTEGRADO",
+    id_pnp: null as number | null,
+  });
 
   const [form, setForm] = useState(ESTADO_INICIAL);
 
@@ -222,6 +189,8 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
   const isMountedRef = useRef(true);
   const submittingRef = useRef(false);
   const activeUploadControllersRef = useRef<Set<AbortController>>(new Set());
+  const viasControllerRef = useRef<AbortController | null>(null);
+  const cuadrasControllerRef = useRef<AbortController | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webCameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -242,6 +211,8 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     return () => {
       isMountedRef.current = false;
       limpiarTimers();
+      viasControllerRef.current?.abort();
+      cuadrasControllerRef.current?.abort();
       activeUploadControllersRef.current.forEach((c) => c.abort());
       activeUploadControllersRef.current.clear();
       fotosRef.current.forEach((f) => liberarUriPreview(f.uri));
@@ -254,12 +225,14 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     idsEnProcesoRef.current.clear();
     setFotos([]);
     setModoBusquedaManual(false);
-    setSelTipoLugar(null);
+    setSelTipoVia(null);
+    setSelVia(null);
+    setVias([]);
     setCuadras([]);
     setModalPlacaVisible(false);
     setBusquedaPlaca("");
     setUnidadForm({
-      id_tipo_vehiculo: null,
+      id_tipo_vehiculo: ID_MOTOCICLETA,
       id_unidad: null,
       placa: "",
       tipo_asignacion: "MUNICIPAL",
@@ -311,6 +284,7 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
             ...prev,
             latitud_gps: lat.toString(),
             longitud_gps: lon.toString(),
+            nombre_punto_gps: prev.nombre_punto_gps || "Ubicación identificada",
           }));
         }
 
@@ -361,7 +335,7 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
         ...prev,
         latitud_gps: "-12.073769",
         longitud_gps: "-77.039673",
-        nombre_punto_gps: "CSI MDJM (Ubicación por defecto)",
+        nombre_punto_gps: "CSI MDJM",
       }));
     }
   }, []);
@@ -371,61 +345,34 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     const timer = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const [resGral, resTiposV, resTiposL, resPnps, resRadios, resZonas] =
-        await Promise.all([
-          fetch(
-            `${API_URL}/catalogos/completo/unificadov?tipoLugar=7,8,9,10&idTipoP=1,2,3,4,6,8`,
-            { signal: controller.signal }
-          ),
-          fetch(`${API_URL}/catalogos/tipos-vehiculo`, {
-            signal: controller.signal,
-          }),
-          fetch(`${API_URL}/catalogos/tipos-lugar`, {
-            signal: controller.signal,
-          }),
-          fetch(`${API_URL}/catalogos/pnp-activos`, {
-            signal: controller.signal,
-          }),
-          fetch(`${API_URL}/catalogos/radios`, {
-            signal: controller.signal,
-          }),
-          fetch(`${API_URL}/catalogos/zonas`, {
-            signal: controller.signal,
-          }),
-        ]);
+      const [resGral, resMotos] = await Promise.all([
+        fetch(
+          `${API_URL}/catalogos/completo/unificadov?tipoLugar=4&idTipoP=6&idTipoP=3`,
+          { signal: controller.signal }
+        ),
+        fetch(`${API_URL}/catalogos/vehiculos-por-tipo/${ID_MOTOCICLETA}`, {
+          signal: controller.signal,
+        }),
+      ]);
 
-      const [dataGral, dataTiposV, dataTiposL, dataPnps, dataRadios, dataZonas] =
-        await Promise.all([
-          resGral.json(),
-          resTiposV.json(),
-          resTiposL.json(),
-          resPnps.json(),
-          resRadios.json(),
-          resZonas.json(),
-        ]);
+      if (!resGral.ok || !resMotos.ok) {
+        throw new Error("Error HTTP al cargar catálogos");
+      }
+
+      const [data, motosData] = await Promise.all([
+        resGral.json(),
+        resMotos.json(),
+      ]);
 
       if (!isMountedRef.current) return;
       catalogosCargadosRef.current = true;
-
-      setCatalogos({
-        usuarios: dataGral.usuarios || [],
-        modalidades: dataGral.modalidades || [],
-        origenes: dataGral.origenes || [],
-        camaras: dataGral.camaras || [],
-        tipos_patrullaje: dataGral.tipos_patrullaje || [],
-        modalidades_patrullaje: dataGral.modalidades_patrullaje || [],
-        tipos_vehiculo: (dataTiposV || []).filter(
-          (t: any) => Number(t.value) === 1 || Number(t.value) === 2
-        ),
-        unidades: [],
-        pnps: dataPnps || [],
-        lugares: dataGral.lugares || [],
-        radios: dataRadios || [],
-        zonas: dataZonas || [],
-        tipos_lugar: (dataTiposL || []).filter((tl: any) =>
-          [7, 8, 9, 10].includes(Number(tl.id_tipo || tl.value))
-        ),
-      });
+      setCatalogos((prev) => ({
+        ...prev,
+        tipos_patrullaje: data.tipos_patrullaje || [],
+        unidades: Array.isArray(motosData) ? motosData : [],
+        lugares: data.lugares || [],
+      }));
+      setTiposVia(data.tipos_via || []);
     } catch (err: any) {
       if (err?.name === "AbortError") return;
       console.error("Error catálogos:", err);
@@ -453,7 +400,6 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     }
   }, [cargarCatalogosInit, obtenerGpsAutomatico]);
 
-  // Pre-indexado para búsqueda instantánea
   const labelNormMap = useMemo(() => {
     const map = new Map<string, string>();
     const indexar = (lista: any[]) => {
@@ -465,11 +411,9 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     };
     indexar(catalogos.lugares);
     indexar(catalogos.unidades);
-    indexar(catalogos.radios);
-    indexar(catalogos.zonas);
-    indexar(cuadras);
+    indexar(vias);
     return map;
-  }, [catalogos.lugares, catalogos.unidades, catalogos.radios, catalogos.zonas, cuadras]);
+  }, [catalogos.lugares, catalogos.unidades, vias]);
 
   const filtroOptimizado = useCallback(
     (keyword: string, label: string) => {
@@ -493,44 +437,14 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     );
   }, [catalogos.unidades, busquedaPlaca, filtroOptimizado]);
 
-  const zonasFiltradas = useMemo(() => {
-    if (!form.id_tipo_patrullaje) return catalogos.zonas;
-    if (form.id_tipo_patrullaje === ID_PATRULLAJE_MOTORIZADO) {
-      const primerVehiculo = form.vehiculos_detalle[0];
-      const idTipoVehiculo =
-        primerVehiculo?.id_tipo_vehiculo || unidadForm.id_tipo_vehiculo;
-      if (idTipoVehiculo) {
-        const permitidas = ZONAS_POR_VEHICULO[idTipoVehiculo];
-        if (permitidas) {
-          return catalogos.zonas.filter((z: any) =>
-            permitidas.includes(Number(z.value))
-          );
-        }
-      }
-    }
-    const permitidasPatrullaje =
-      ZONAS_POR_PATRULLAJE[form.id_tipo_patrullaje as number];
-    if (permitidasPatrullaje) {
-      return catalogos.zonas.filter((z: any) =>
-        permitidasPatrullaje.includes(Number(z.value))
-      );
-    }
-    return catalogos.zonas;
-  }, [
-    catalogos.zonas,
-    form.id_tipo_patrullaje,
-    form.vehiculos_detalle,
-    unidadForm.id_tipo_vehiculo,
-  ]);
-
-  const canAdvance = useCallback(() => {
+  const pasoActualValido = useMemo(() => {
     if (step === 1) {
       const hasBasics =
         !!form.id_tipo_patrullaje &&
-        !!form.grupo &&
+        !!form.id_modalidad_patrullaje &&
+        !!form.turno &&
         !!form.id_origen &&
-        !!form.sector_asignado &&
-        !!form.turno;
+        !!form.grupo;
       if (Number(form.id_tipo_patrullaje) === ID_PATRULLAJE_MOTORIZADO) {
         return hasBasics && form.vehiculos_detalle.length > 0;
       }
@@ -538,132 +452,186 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     }
 
     if (step === 2) {
-      const tieneLugar =
-        form.id_lugar !== null &&
-        form.id_lugar !== undefined &&
-        String(form.id_lugar).trim() !== "";
-      return !!form.hora_alerta && !!form.fecha_evento && tieneLugar;
+      const { hora_alerta, hora_llegada, hora_repliegue, fecha_evento } = form;
+      if (!hora_alerta || !hora_llegada || !hora_repliegue || !fecha_evento) {
+        return false;
+      }
+
+      const aMinutos = (t: string) => {
+        const [h, m] = t.split(":").map(Number);
+        if (Number.isNaN(h) || Number.isNaN(m)) return NaN;
+        return h * 60 + m;
+      };
+
+      const alerta = aMinutos(hora_alerta);
+      let llegada = aMinutos(hora_llegada);
+      let repliegue = aMinutos(hora_repliegue);
+      if (Number.isNaN(alerta) || Number.isNaN(llegada) || Number.isNaN(repliegue)) {
+        return false;
+      }
+
+      if (llegada < alerta) llegada += 24 * 60;
+      if (repliegue < alerta) repliegue += 24 * 60;
+      if (repliegue < llegada) repliegue += 24 * 60;
+
+      return alerta <= llegada && llegada <= repliegue && repliegue - alerta <= 12 * 60;
     }
 
     if (step === 3) {
-      if (!form.id_radio || !form.id_zona) return false;
-      const esMotorizado =
-        Number(form.id_tipo_patrullaje) === ID_PATRULLAJE_MOTORIZADO;
-      if (esMotorizado) {
-        return fotos.length > 0;
-      }
-      return true;
+      const lugarValido = modoBusquedaManual
+        ? cuadras.length > 0
+          ? !!form.id_lugar
+          : !!selVia
+        : !!form.id_lugar;
+      return lugarValido;
+    }
+
+    if (step === 4) {
+      return (form.descripcion || "").trim().length > 3;
     }
 
     return false;
   }, [
     step,
     form.id_tipo_patrullaje,
-    form.grupo,
-    form.id_origen,
-    form.sector_asignado,
+    form.id_modalidad_patrullaje,
     form.turno,
+    form.id_origen,
+    form.grupo,
     form.vehiculos_detalle.length,
-    form.id_lugar,
     form.hora_alerta,
+    form.hora_llegada,
+    form.hora_repliegue,
     form.fecha_evento,
-    form.id_radio,
-    form.id_zona,
-    fotos.length,
+    form.id_lugar,
+    form.descripcion,
+    modoBusquedaManual,
+    cuadras.length,
+    selVia,
   ]);
 
-  const handleTipoLugarChange = async (idTipoLugar: any) => {
-    setSelTipoLugar(idTipoLugar);
-    setForm((f) => ({ ...f, id_lugar: null }));
-    try {
-      const res = await fetch(
-        `${API_URL}/catalogos/lugares?tipo=${idTipoLugar}`
+  const errorIntervaloStep2 = useMemo(() => {
+    if (!form.hora_alerta || !form.hora_llegada || !form.hora_repliegue) {
+      return false;
+    }
+    const aMinutos = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      if (Number.isNaN(h) || Number.isNaN(m)) return NaN;
+      return h * 60 + m;
+    };
+    const alerta = aMinutos(form.hora_alerta);
+    let llegada = aMinutos(form.hora_llegada);
+    let repliegue = aMinutos(form.hora_repliegue);
+    if (Number.isNaN(alerta) || Number.isNaN(llegada) || Number.isNaN(repliegue)) {
+      return true;
+    }
+    if (llegada < alerta) llegada += 24 * 60;
+    if (repliegue < alerta) repliegue += 24 * 60;
+    if (repliegue < llegada) repliegue += 24 * 60;
+    return !(alerta <= llegada && llegada <= repliegue && repliegue - alerta <= 12 * 60);
+  }, [form.hora_alerta, form.hora_llegada, form.hora_repliegue]);
+
+  const hayFotosSubiendo = fotos.some((f) => f.uploading);
+
+  const agregarVehiculo = () => {
+    if (!unidadForm.id_unidad) {
+      return mostrarAlerta("Atención", "Seleccione una unidad/placa.");
+    }
+
+    const yaExiste = form.vehiculos_detalle.some(
+      (v) => v.id_unidad === unidadForm.id_unidad
+    );
+    if (yaExiste) {
+      return mostrarAlerta(
+        "Atención",
+        `La placa ${unidadForm.placa} ya ha sido agregada.`
       );
-      const data = await res.json();
-      if (isMountedRef.current) {
-        setCuadras(data || []);
-      }
-    } catch (err) {
-      console.error("Error cargando lugares por tipo:", err);
-      if (isMountedRef.current) setCuadras([]);
-    }
-  };
-
-  const fetchUnidades = async (idTipo: any) => {
-    try {
-      const res = await fetch(
-        `${API_URL}/catalogos/vehiculos-por-tipo/${idTipo}`
-      );
-      const data = await res.json();
-      if (isMountedRef.current) {
-        setCatalogos((prev) => ({ ...prev, unidades: data || [] }));
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const cargarChecklist = async (idTipoVehiculo: string | number) => {
-    try {
-      const response = await fetch(
-        `${API_URL}/catalogos/checklist-itemsfiltro1?id_tipo_vehiculo=${idTipoVehiculo}`
-      );
-      const data = await response.json();
-      if (isMountedRef.current) setChecklistItems(data || []);
-    } catch (error) {
-      console.error("Error al cargar checklist:", error);
-    }
-  };
-
-  const abrirChecklist = (unidad: Unidad) => {
-    setUnidadTemporal(unidad);
-    setChecklistRespuestas({});
-    cargarChecklist(unidad.id_tipo_vehiculo);
-    setModalChecklistVisible(true);
-  };
-
-  const confirmarChecklistUnidad = () => {
-    if (!odometroInicial.trim()) {
-      return mostrarAlerta("Atención", "Ingrese el odómetro inicial.");
     }
 
-    const checklist_items = checklistItems.map((item) => {
-      const respuesta = checklistRespuestas[item.id_item];
-      const esConforme = respuesta !== undefined ? respuesta.conforme : true;
-      return {
-        id_item: item.id_item,
-        esta_conforme: esConforme ? 1 : 0,
-        observacion: respuesta?.obs || "",
-      };
-    });
-
-    setForm((prev: any) => ({
-      ...prev,
+    setForm((f) => ({
+      ...f,
+      id_modalidad_patrullaje: "2",
       vehiculos_detalle: [
-        ...prev.vehiculos_detalle,
+        ...f.vehiculos_detalle,
         {
-          ...unidadTemporal,
-          odometro_inicial: odometroInicial,
-          checklist_items,
+          ...unidadForm,
+          id_tipo_vehiculo: ID_MOTOCICLETA,
+          tipo_asignacion: "MUNICIPAL",
+          id_pnp: null,
+          nombre_pnp: "",
         },
       ],
     }));
 
-    setOdometroInicial("");
     setUnidadForm({
-      id_tipo_vehiculo: null,
+      id_tipo_vehiculo: ID_MOTOCICLETA,
       id_unidad: null,
       placa: "",
       tipo_asignacion: "MUNICIPAL",
       id_pnp: null,
     });
-    setModalChecklistVisible(false);
   };
+
+  const handleTipoViaChange = async (idTipo: any) => {
+    setSelTipoVia(idTipo);
+    setSelVia(null);
+    setVias([]);
+    setCuadras([]);
+    setForm((f) => ({ ...f, id_lugar: null }));
+
+    viasControllerRef.current?.abort();
+    const controller = new AbortController();
+    viasControllerRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), 12000);
+
+    try {
+      const res = await fetch(`${API_URL}/catalogos/vias/${idTipo}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (isMountedRef.current) setVias(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") console.error(err);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const handleViaChange = async (idVia: any) => {
+    setSelVia(idVia);
+    setCuadras([]);
+    setForm((f) => ({ ...f, id_lugar: null }));
+
+    cuadrasControllerRef.current?.abort();
+    const controller = new AbortController();
+    cuadrasControllerRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), 12000);
+
+    try {
+      const res = await fetch(`${API_URL}/catalogos/cuadras/${idVia}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (isMountedRef.current) setCuadras(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") console.error(err);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const getDynamicBorderStyle = (value: any) => ({
+    borderColor: value ? MJM_BLUE : "#ddd",
+    borderWidth: value ? 1.5 : 1,
+  });
 
   const formatearFechaEspañol = (fechaStr: string) => {
     if (!fechaStr) return "Seleccione fecha";
     const fecha = new Date(fechaStr + "T12:00:00");
     if (Number.isNaN(fecha.getTime())) return "Seleccione fecha";
+
     const diasSemana = [
       "Domingo",
       "Lunes",
@@ -687,6 +655,7 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
       "Noviembre",
       "Diciembre",
     ];
+
     return `${diasSemana[fecha.getDay()]}, ${fecha.getDate()} de ${
       meses[fecha.getMonth()]
     } de ${fecha.getFullYear()}`;
@@ -699,6 +668,53 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
     }
     return "00:00";
   };
+
+  const aplicarFechaSeleccionada = (selectedDate: Date) => {
+    const fechaStr = formatearDateAYYYYMMDD(selectedDate);
+    const hoyStr = getHoy();
+    if (fechaStr > hoyStr) {
+      mostrarAlerta("Atención", "No se pueden seleccionar fechas futuras.");
+      setForm((prev) => ({ ...prev, fecha_evento: hoyStr }));
+    } else {
+      setForm((prev) => ({ ...prev, fecha_evento: fechaStr }));
+    }
+  };
+
+  const procesarSeleccionAndroid = (selectedDate: Date) => {
+    if (pickerMode === "date") {
+      aplicarFechaSeleccionada(selectedDate);
+    } else if (activeField) {
+      const horas = String(selectedDate.getHours()).padStart(2, "0");
+      const minutos = String(selectedDate.getMinutes()).padStart(2, "0");
+      const field = activeField;
+      setActiveField(null);
+      setForm((prev) => ({ ...prev, [field]: `${horas}:${minutos}` }));
+    }
+  };
+
+  const confirmIOSSelection = () => {
+    if (activeField === "fecha_evento") {
+      aplicarFechaSeleccionada(tempDate);
+    } else if (activeField) {
+      const horaStr = tempDate.toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      setForm((f) => ({ ...f, [activeField]: horaStr }));
+    }
+    setShowPicker(false);
+    setActiveField(null);
+  };
+
+  const capturarHoraActual = useCallback((campo: string) => {
+    const ahora = new Date().toLocaleTimeString("en-GB", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    setForm((f) => ({ ...f, [campo]: ahora }));
+  }, []);
 
   const procesarYSubirImagen = useCallback(
     async (origen: File | string) => {
@@ -848,7 +864,7 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
       );
     }
   };
-const hayFotosSubiendo = fotos.some((f) => f.uploading);
+
   const enviarRegistro = async () => {
     if (submittingRef.current) return;
 
@@ -859,8 +875,8 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
 
     if (fotos.some((f) => f.uploading)) {
       return mostrarAlerta(
-        "Espere",
-        "Las fotos aún se están subiendo a la nube."
+        "Espere un momento",
+        "Las fotos aún se están subiendo a la nube. Reintente en unos segundos."
       );
     }
 
@@ -871,10 +887,9 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
     setUploadStatus("Subiendo...");
     setIsFinished(false);
 
-    intervalRef.current = setInterval(
-      () => setUploadProgress((p) => (p < 90 ? p + 10 : p)),
-      150
-    );
+    intervalRef.current = setInterval(() => {
+      setUploadProgress((p) => (p < 90 ? p + 10 : p));
+    }, 150);
 
     const controller = new AbortController();
     const requestTimeout = setTimeout(() => controller.abort(), 30000);
@@ -884,7 +899,27 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
         .map((f) => f.url_remota)
         .filter((url): url is string => url !== null);
 
-      const res = await fetch(`${API_URL}/api/vehiculo/iniciar-servicio`, {
+      const victimasProcesadas = (form.victimas || []).map((v) => {
+        const nombreLimpio = (v.nombres || "").trim();
+        const dniLimpio = (v.dni || "").trim();
+
+        const partes: string[] = [];
+        if (nombreLimpio) partes.push(nombreLimpio);
+        if (dniLimpio) partes.push(`DNI: ${dniLimpio}`);
+        if (v.sexo === "M") partes.push("M");
+        else if (v.sexo === "F") partes.push("F");
+        if (v.tipo_edad === "M") partes.push("May");
+        else if (v.tipo_edad === "m") partes.push("Men");
+
+        return {
+          nombre_victima: partes.join(" | ").toUpperCase() || null,
+          edad: v.edad || null,
+          placa_victima: (v.placa_victima || "").toUpperCase(),
+          id_relacion_v: 2,
+        };
+      });
+
+      const res = await fetch(`${API_URL}/ocurrencias/registrar/modr2para`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -893,10 +928,11 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
           id_usuario: Number(idFinal),
           id_tipop: form.id_tipo_patrullaje,
           id_modalidadp: form.id_modalidad_patrullaje,
-          id_camara: form.id_camara.map((c) => (c as any).value).join(","),
+          id_camara: Array.isArray(form.id_camara)
+            ? form.id_camara.map((c: any) => c.value).join(",")
+            : form.id_camara || "",
           fotos: urlsFotosFinales,
-          id_radio: form.id_radio,
-          id_zona: form.id_zona,
+          victimas_detalle: victimasProcesadas,
         }),
         signal: controller.signal,
       });
@@ -914,16 +950,15 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
           submittingRef.current = false;
           setLoading(false);
           limpiarFormulario();
-          router.replace("/principal" as any);
+          obtenerGpsAutomatico();
+          router.replace("/principal");
         }, 1200);
       } else {
         let mensajeError = "No se pudo guardar el registro.";
         try {
           const errorData = await res.json();
           mensajeError = errorData.error || errorData.message || mensajeError;
-        } catch {
-          // respuesta no JSON
-        }
+        } catch {}
         submittingRef.current = false;
         setLoading(false);
         mostrarAlerta("Error", mensajeError);
@@ -954,13 +989,22 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
       {data.map((item: any) => (
         <Pressable
           key={item.value}
-          onPress={() => {
-            setForm((prev) => ({
-              ...prev,
-              [field]: item.value,
-              id_zona: field === "id_tipo_patrullaje" ? null : prev.id_zona,
-            }));
-          }}
+          onPress={() =>
+            setForm((prev) => {
+              if (
+                field === "id_tipo_patrullaje" &&
+                Number(item.value) !== ID_PATRULLAJE_MOTORIZADO
+              ) {
+                return {
+                  ...prev,
+                  [field]: item.value,
+                  vehiculos_detalle: [],
+                  id_modalidad_patrullaje: "1",
+                };
+              }
+              return { ...prev, [field]: item.value };
+            })
+          }
           style={[
             styles.mosaicoItem,
             currentId === item.value && styles.mosaicoSelected,
@@ -984,26 +1028,8 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
     </View>
   );
 
-  const getDynamicBorderStyle = (value: any) => ({
-    borderColor: value ? MJM_BLUE : "#ddd",
-    borderWidth: value ? 1.5 : 1,
-  });
-
-  const textoCentralFirma = "inicio de servicio";
-  const firmaActiva = (form.descripcion || "").startsWith(textoCentralFirma);
-  const textoDescripcionLibre = firmaActiva
-    ? (form.descripcion || "")
-        .replace(textoCentralFirma, "")
-        .replace(/^[\n\r]+/, "")
-    : form.descripcion || "";
-
   return (
-    <ThemedView
-      style={[
-        styles.main,
-        { paddingTop: insets.top, backgroundColor: "#f4f7f6" },
-      ]}
-    >
+    <ThemedView style={[styles.main, { backgroundColor: "#f4f7f6" }]}>
       {Platform.OS === "web" && (
         <input
           ref={webCameraInputRef}
@@ -1021,11 +1047,10 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
         />
       )}
 
+      {/* Cabecera compacta sin paddingTop duplicado */}
       <View style={styles.stepperContainer}>
-        <ThemedText style={styles.sectionTitle}>
-          INICIO DE SERVICIO:
-        </ThemedText>
-        {[1, 2, 3].map((i) => (
+        <ThemedText style={styles.stepperTitle}>PARAMÉDICO:</ThemedText>
+        {[1, 2, 3, 4].map((i) => (
           <View
             key={i}
             style={[styles.circle, step >= i && { backgroundColor: MJM_BLUE }]}
@@ -1065,65 +1090,47 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                   ENVIAR REPORTE DESDE:
                 </ThemedText>
               </View>
-              <ThemedText style={{ fontSize: 11, color: "#000000", marginTop: 2 }}>
+              <ThemedText style={{ fontSize: 11, color: "#000", marginTop: 2 }}>
                 {form.nombre_punto_gps || "CSI MDJM"}
               </ThemedText>
             </View>
 
-            <View>
-              <ThemedText style={styles.label}>GRUPO</ThemedText>
-              {renderMosaicos(
-                [
-                  { label: "GRUPO 1", value: "1" },
-                  { label: "GRUPO 2", value: "2" },
-                  { label: "GRUPO 3", value: "3" },
-                  { label: "GRUPO 4", value: "4" },
-                ],
-                form.grupo,
-                "grupo",
-                "people-outline"
-              )}
+            <ThemedText style={styles.label}>GRUPO</ThemedText>
+            {renderMosaicos(
+              [
+                { label: "GRUPO 1", value: "1" },
+                { label: "GRUPO 2", value: "2" },
+                { label: "GRUPO 3", value: "3" },
+                { label: "GRUPO 4", value: "4" },
+              ],
+              form.grupo,
+              "grupo",
+              "people-outline"
+            )}
 
-              <ThemedText style={styles.label}>SECTOR</ThemedText>
-              {renderMosaicos(
-                [
-                  { label: "SECTOR 1", value: "1" },
-                  { label: "SECTOR 2", value: "2" },
-                  { label: "SECTOR 3", value: "3" },
-                  { label: "RESIDENCIAL SAN FELIPE", value: "RF" },
-                  { label: "GENERAL", value: "GENERAL" },
-                ],
-                form.sector_asignado,
-                "sector_asignado",
-                "people-outline"
-              )}
+            <ThemedText style={styles.label}>
+              ¿A QUÉ TURNO PERTENECE ESTE REPORTE?
+            </ThemedText>
+            {renderMosaicos(
+              [
+                { label: "MAÑANA", value: "M" },
+                { label: "TARDE", value: "T" },
+                { label: "NOCHE", value: "N" },
+              ],
+              form.turno,
+              "turno",
+              "time-outline"
+            )}
 
-              <ThemedText style={styles.label}>
-                ¿A QUÉ TURNO PERTENECE ESTE REPORTE?
-              </ThemedText>
-              {renderMosaicos(
-                [
-                  { label: "MAÑANA", value: "M" },
-                  { label: "TARDE", value: "T" },
-                  { label: "NOCHE", value: "N" },
-                ],
-                form.turno,
-                "turno",
-                "time-outline"
-              )}
-
-              <ThemedText
-                style={{ fontSize: 10, color: MJM_BLUE, fontWeight: "bold" }}
-              >
-                TIPO DE PATRULLAJE
-              </ThemedText>
-              {renderMosaicos(
-                catalogos.tipos_patrullaje,
-                form.id_tipo_patrullaje,
-                "id_tipo_patrullaje",
-                "shield-checkmark-outline"
-              )}
-            </View>
+            <ThemedText style={styles.label}>
+              TIPO DE PATRULLAJE (Mot. Param. si corresponde)
+            </ThemedText>
+            {renderMosaicos(
+              catalogos.tipos_patrullaje,
+              form.id_tipo_patrullaje,
+              "id_tipo_patrullaje",
+              "shield-checkmark-outline"
+            )}
 
             {Number(form.id_tipo_patrullaje) === ID_PATRULLAJE_MOTORIZADO && (
               <View
@@ -1133,151 +1140,88 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                 ]}
               >
                 <View style={styles.cascadaHeader}>
-                  <Ionicons name="car-sport" size={16} color={MJM_BLUE} />
-                  <ThemedText
-                    style={{ fontSize: 10, color: MJM_BLUE, fontWeight: "bold" }}
-                  >
-                    ELEGIR UNIDADES
+                  <Ionicons name="bicycle" size={16} color={MJM_BLUE} />
+                  <ThemedText style={styles.cascadaTitle}>
+                    MOTOCICLETA PARAMÉDICA
                   </ThemedText>
                 </View>
 
                 {form.vehiculos_detalle.length === 0 ? (
-                  <>
-                    <Dropdown
-                      style={styles.dropdown}
-                      data={catalogos.tipos_vehiculo}
-                      labelField="label"
-                      valueField="value"
-                      placeholder="Tipo Vehículo"
-                      value={unidadForm.id_tipo_vehiculo}
-                      onChange={(v) => {
-                        setBusquedaPlaca("");
-                        setUnidadForm({
-                          ...unidadForm,
-                          id_tipo_vehiculo: v.value,
-                          id_unidad: null,
-                          placa: "",
-                        });
-                        fetchUnidades(v.value);
-                      }}
-                    />
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        gap: 10,
-                        alignItems: "flex-end",
-                        marginTop: 10,
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Pressable
-                          onPress={() => {
-                            if (!unidadForm.id_tipo_vehiculo) {
-                              return mostrarAlerta(
-                                "Atención",
-                                "Primero seleccione el Tipo de Vehículo."
-                              );
-                            }
-                            setBusquedaPlaca("");
-                            setModalPlacaVisible(true);
-                          }}
-                          style={[
-                            styles.dropdown,
-                            {
-                              flexDirection: "row",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                            },
-                          ]}
-                        >
-                          <ThemedText
-                            numberOfLines={1}
-                            style={{
-                              fontSize: 14,
-                              color: unidadForm.placa ? "#000" : "#666",
-                              flex: 1,
-                            }}
-                          >
-                            {unidadForm.placa || "Seleccione Placa"}
-                          </ThemedText>
-                          <Ionicons name="chevron-down" size={18} color="#666" />
-                        </Pressable>
-                      </View>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: 10,
+                      alignItems: "flex-end",
+                      marginTop: 10,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
                       <Pressable
+                        onPress={() => {
+                          setBusquedaPlaca("");
+                          setModalPlacaVisible(true);
+                        }}
                         style={[
-                          styles.btnAddUnit,
-                          (!unidadForm.id_unidad || !unidadForm.id_tipo_vehiculo) && {
-                            opacity: 0.4,
+                          styles.dropdown,
+                          {
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
                           },
                         ]}
-                        disabled={
-                          !unidadForm.id_unidad || !unidadForm.id_tipo_vehiculo
-                        }
-                        onPress={() => {
-                          if (!unidadForm.id_unidad || !unidadForm.id_tipo_vehiculo) {
-                            return;
-                          }
-                          abrirChecklist({
-                            ...unidadForm,
-                            id_unidad: unidadForm.id_unidad,
-                            id_tipo_vehiculo: unidadForm.id_tipo_vehiculo,
-                          } as Unidad);
-                        }}
                       >
-                        <Ionicons name="checkbox" size={24} color="white" />
+                        <ThemedText
+                          numberOfLines={1}
+                          style={{
+                            fontSize: 14,
+                            color: unidadForm.placa ? "#000" : "#666",
+                            flex: 1,
+                          }}
+                        >
+                          {unidadForm.placa || "Seleccione Placa Moto"}
+                        </ThemedText>
+                        <Ionicons name="chevron-down" size={18} color="#666" />
                       </Pressable>
                     </View>
-                  </>
+                    <Pressable style={styles.btnAddUnit} onPress={agregarVehiculo}>
+                      <Ionicons name="add" size={24} color="white" />
+                    </Pressable>
+                  </View>
                 ) : null}
 
                 {form.vehiculos_detalle.length > 0 && (
                   <View style={styles.listadoUnidadesContainer}>
                     <View style={styles.listadoHeader}>
-                      <ThemedText
-                        style={{ fontSize: 10, color: MJM_BLUE, fontWeight: "bold" }}
-                      >
-                        UNIDADES ASIGNADAS ({form.vehiculos_detalle.length})
+                      <ThemedText style={styles.listadoTitle}>
+                        MOTO EN EL REPORTE (1)
                       </ThemedText>
                     </View>
+
                     {form.vehiculos_detalle.map((v, index) => (
-                      <View
-                        key={index}
-                        style={[styles.unitCard, { backgroundColor: "#fff" }]}
-                      >
+                      <View key={v.id_unidad ?? index} style={styles.unitCard}>
                         <View style={styles.unitCardIcon}>
-                          <Ionicons
-                            name={
-                              Number(v.id_tipo_vehiculo) === ID_CAMIONETA
-                                ? "car"
-                                : Number(v.id_tipo_vehiculo) === 3 ||
-                                  Number(v.id_tipo_vehiculo) === 4
-                                ? "bus"
-                                : "bicycle"
-                            }
-                            size={20}
-                            color={MJM_BLUE}
-                          />
+                          <Ionicons name="bicycle" size={20} color={MJM_BLUE} />
                         </View>
+
                         <View style={{ flex: 1, marginLeft: 10 }}>
                           <ThemedText style={styles.unitCardPlaca}>
-                            {v.placa}{" "}
-                            {v.odometro_inicial ? `(KM: ${v.odometro_inicial})` : ""}
+                            {v.placa}
+                          </ThemedText>
+                          <ThemedText style={styles.unitCardSub}>
+                            MUNICIPAL
                           </ThemedText>
                         </View>
+
                         <Pressable
                           onPress={() => {
                             const nuevos = form.vehiculos_detalle.filter(
                               (_, i) => i !== index
                             );
-                            setForm({ ...form, vehiculos_detalle: nuevos });
-                            setUnidadForm({
-                              id_tipo_vehiculo: null,
-                              id_unidad: null,
-                              placa: "",
-                              tipo_asignacion: "MUNICIPAL",
-                              id_pnp: null,
-                            });
+                            setForm((prev) => ({
+                              ...prev,
+                              id_modalidad_patrullaje: "1",
+                              vehiculos_detalle: nuevos,
+                            }));
                           }}
                           style={styles.unitCardRemove}
                         >
@@ -1298,586 +1242,874 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
 
         {step === 2 && (
           <View style={styles.card}>
-            <ThemedText style={styles.sectionTitle}>
-              PASO 2: TEMPORALIDAD Y LUGAR
-            </ThemedText>
+            <ThemedText style={styles.sectionTitle}>PASO 2: TIEMPOS</ThemedText>
 
-            <View style={{ gap: 15, marginBottom: 15 }}>
-              <View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      flex: 1,
-                    }}
-                  >
-                    <Ionicons name="location" size={18} color={MJM_BLUE} />
-                    <ThemedText
-                      style={[
-                        styles.cascadaTitle,
-                        { marginLeft: 5, flex: 1, fontSize: 11 },
-                      ]}
-                    >
-                      {modoBusquedaManual
-                        ? "BUSCAR POR TIPO"
-                        : "SELECCIONE (CASETA, LOCAL, PUESTO O MÓDULO)"}
-                    </ThemedText>
-                  </View>
-
-                  <Pressable
-                    style={{
-                      backgroundColor:
-                        String(form.id_lugar) === "2120" ? MJM_BLUE : "#e2e8f0",
-                      paddingHorizontal: 8,
-                      paddingVertical: 4,
-                      borderRadius: 6,
-                      marginRight: 6,
-                    }}
-                    onPress={() => {
-                      setModoBusquedaManual(false);
-                      setSelTipoLugar(null);
-                      setCuadras([]);
-                      setForm((prev: any) => ({ ...prev, id_lugar: 2120 }));
-                    }}
-                  >
-                    <ThemedText
-                      style={{
-                        fontSize: 9,
-                        fontWeight: "bold",
-                        color:
-                          String(form.id_lugar) === "2120" ? "white" : "#475569",
-                      }}
-                    >
-                      {String(form.id_lugar) === "2120"
-                        ? "✓ Sin puesto fijo"
-                        : "+ Sin puesto fijo"}
-                    </ThemedText>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => {
-                      setModoBusquedaManual(!modoBusquedaManual);
-                      setSelTipoLugar(null);
-                      setCuadras([]);
-                      setForm((prev: any) => ({ ...prev, id_lugar: null }));
-                    }}
-                    style={[
-                      styles.btnToggleModo,
-                      modoBusquedaManual && { backgroundColor: "#E3F2FD" },
-                    ]}
-                  >
-                    <ThemedText
-                      style={{
-                        color: MJM_BLUE,
-                        fontSize: 10,
-                        fontWeight: "bold",
-                      }}
-                    >
-                      {modoBusquedaManual ? "USAR LISTADO" : "POR TIPO LUGAR"}
-                    </ThemedText>
-                  </Pressable>
-                </View>
-
-                {!modoBusquedaManual && (
-                  <View style={{ marginBottom: 10, marginTop: 10 }}>
-                    <Dropdown
-                      maxHeight={320}
-                      containerStyle={styles.dropdownContainer}
-                      itemContainerStyle={styles.dropdownItemContainer}
-                      itemTextStyle={styles.dropdownItemText}
-                      selectedTextProps={{ numberOfLines: 1 }}
-                      selectedTextStyle={{ color: "#000", fontSize: 14 }}
-                      style={[styles.dropdown, { borderColor: MJM_BLUE }]}
-                      data={catalogos.lugares}
-                      search
-                      searchPlaceholder="Buscar caseta, local o puesto..."
-                      labelField="label"
-                      valueField="value"
-                      placeholder="Seleccione la ubicación..."
-                      value={form.id_lugar}
-                      onFocus={() => {
-                        setForm((prev: any) => ({ ...prev, id_lugar: null }));
-                      }}
-                      searchQuery={filtroOptimizado}
-                      placeholderStyle={{ color: "#666" }}
-                      onChange={(item) => {
-                        setForm((prev: any) => ({
-                          ...prev,
-                          id_lugar: item.value,
-                        }));
-                      }}
-                      flatListProps={{
-                        nestedScrollEnabled: true,
-                        keyboardShouldPersistTaps: "handled",
-                        initialNumToRender: 15,
-                        maxToRenderPerBatch: 15,
-                        windowSize: 5,
-                      }}
-                      activeColor="#E3F2FD"
-                      inputSearchStyle={styles.inputSearchStyle}
-                    />
-                  </View>
-                )}
-
-                {modoBusquedaManual && (
-                  <View
-                    style={[styles.cascadaGrid, { marginTop: 10, gap: 10 }]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <ThemedText style={styles.labelSubCascada}>
-                        TIPO LUGAR
-                      </ThemedText>
-                      <Dropdown
-                        maxHeight={260}
-                        containerStyle={styles.dropdownContainer}
-                        itemContainerStyle={styles.dropdownItemContainer}
-                        itemTextStyle={styles.dropdownItemText}
-                        style={styles.dropdownCascadaItem}
-                        data={catalogos.tipos_lugar}
-                        search
-                        searchPlaceholder="Filtrar tipo..."
-                        searchQuery={filtroOptimizado}
-                        labelField="label"
-                        valueField="value"
-                        placeholder="Tipo..."
-                        value={selTipoLugar}
-                        onFocus={() => {
-                          setSelTipoLugar(null);
-                          setCuadras([]);
-                          setForm((prev: any) => ({ ...prev, id_lugar: null }));
-                        }}
-                        onChange={(item) => handleTipoLugarChange(item.value)}
-                        placeholderStyle={{ fontSize: 11, color: "#999" }}
-                        selectedTextStyle={{
-                          fontSize: 11,
-                          fontWeight: "bold",
-                          color: MJM_BLUE,
-                        }}
-                        flatListProps={{
-                          nestedScrollEnabled: true,
-                          keyboardShouldPersistTaps: "handled",
-                        }}
-                        activeColor="#E3F2FD"
-                        inputSearchStyle={styles.inputSearchStyle}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1.5 }}>
-                      <ThemedText style={styles.labelSubCascada}>
-                        NOMBRE DEL LUGAR
-                      </ThemedText>
-                      <Dropdown
-                        maxHeight={260}
-                        containerStyle={styles.dropdownContainer}
-                        itemContainerStyle={styles.dropdownItemContainer}
-                        itemTextStyle={styles.dropdownItemText}
-                        style={[
-                          styles.dropdownCascadaItem,
-                          !selTipoLugar && styles.dropdownDisabled,
-                        ]}
-                        disable={!selTipoLugar}
-                        data={cuadras}
-                        search
-                        searchPlaceholder={
-                          selTipoLugar ? "Buscar..." : "Primero elija tipo..."
-                        }
-                        searchQuery={filtroOptimizado}
-                        labelField="label"
-                        valueField="value"
-                        placeholder={selTipoLugar ? "Lugar..." : "..."}
-                        value={form.id_lugar}
-                        onChange={(item) =>
-                          setForm((prev: any) => ({
-                            ...prev,
-                            id_lugar: item.value,
-                          }))
-                        }
-                        placeholderStyle={{ fontSize: 11, color: "#999" }}
-                        selectedTextStyle={{
-                          fontSize: 11,
-                          fontWeight: "bold",
-                          color: MJM_BLUE,
-                        }}
-                        flatListProps={{
-                          nestedScrollEnabled: true,
-                          keyboardShouldPersistTaps: "handled",
-                        }}
-                        activeColor="#E3F2FD"
-                        inputSearchStyle={styles.inputSearchStyle}
-                      />
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              <View>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginBottom: 10,
+              }}
+            >
+              <ThemedText
+                style={[styles.cascadaTitle, { marginLeft: 5, fontSize: 12 }]}
+              >
+                FECHA
+              </ThemedText>
+              <Pressable
+                onPress={() =>
+                  setForm((prev) => ({ ...prev, fecha_evento: getHoy() }))
+                }
+                style={{
+                  backgroundColor: MJM_BLUE,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 6,
+                }}
+              >
                 <ThemedText
-                  style={{
-                    fontSize: 10,
-                    color: MJM_BLUE,
-                    fontWeight: "bold",
-                    marginBottom: 5,
-                  }}
+                  style={{ color: "white", fontSize: 11, fontWeight: "bold" }}
                 >
-                  FECHA
+                  PONER HOY
                 </ThemedText>
-                <View
-                  style={[
-                    styles.pickerPressable,
-                    {
-                      backgroundColor: "#F0F0F0",
-                      borderColor: "#CCC",
-                      borderWidth: 1,
-                    },
-                  ]}
-                >
-                  <ThemedText style={{ color: "#555" }}>
-                    {formatearFechaEspañol(getHoy())}
+              </Pressable>
+            </View>
+
+            {Platform.OS === "web" ? (
+              <input
+                type="date"
+                value={form.fecha_evento ?? ""}
+                max={getHoy()}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const hoyStr = getHoy();
+                  if (!val || val > hoyStr) {
+                    if (val > hoyStr) {
+                      mostrarAlerta(
+                        "Atención",
+                        "No se pueden seleccionar fechas futuras."
+                      );
+                    }
+                    setForm((prev) => ({ ...prev, fecha_evento: hoyStr }));
+                  } else {
+                    setForm((prev) => ({ ...prev, fecha_evento: val }));
+                  }
+                }}
+                style={{
+                  height: 45,
+                  borderWidth: 1,
+                  borderColor: "#ccc",
+                  borderRadius: 8,
+                  padding: 10,
+                  fontSize: 16,
+                  backgroundColor: "#FFFFFF",
+                  color: "#000000",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  borderStyle: "solid",
+                }}
+              />
+            ) : (
+              <Pressable
+                onPress={() => {
+                  setPickerMode("date");
+                  setActiveField("fecha_evento");
+                  const hoy = new Date();
+                  const fechaForm = new Date(
+                    (form.fecha_evento || getHoy()) + "T12:00:00"
+                  );
+                  setTempDate(
+                    Number.isNaN(fechaForm.getTime()) || fechaForm > hoy
+                      ? hoy
+                      : fechaForm
+                  );
+                  setShowPicker(true);
+                }}
+                style={[
+                  styles.pickerPressable,
+                  {
+                    backgroundColor: "#FFFFFF",
+                    borderColor: MJM_BLUE,
+                    borderWidth: 1,
+                  },
+                  getDynamicBorderStyle(form.fecha_evento),
+                ]}
+              >
+                <Ionicons name="calendar-outline" size={20} color={MJM_BLUE} />
+                <ThemedText style={{ color: "#000", marginLeft: 10 }}>
+                  {formatearFechaEspañol(form.fecha_evento)}
+                </ThemedText>
+              </Pressable>
+            )}
+
+            {(["hora_alerta", "hora_llegada", "hora_repliegue"] as const).map(
+              (k) => (
+                <View key={k} style={{ marginTop: 15 }}>
+                  <ThemedText style={styles.label}>
+                    {k.toUpperCase().replace("_", " ")}
+                  </ThemedText>
+                  <View style={styles.timeRow}>
+                    {Platform.OS === "web" ? (
+                      <input
+                        type="time"
+                        value={form[k] ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setForm((prev) => ({ ...prev, [k]: val }));
+                        }}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          height: 45,
+                          borderWidth: 1,
+                          borderStyle: "solid",
+                          borderColor: "#ccc",
+                          borderRadius: 8,
+                          padding: 10,
+                          backgroundColor: "#FFFFFF",
+                          color: "#000000",
+                          outline: "none",
+                        }}
+                      />
+                    ) : (
+                      <Pressable
+                        onPress={() => {
+                          setPickerMode("time");
+                          setActiveField(k);
+                          const currentTime = form[k];
+                          const date = new Date();
+                          if (currentTime && currentTime !== "00:00") {
+                            const [hours, minutes] = currentTime.split(":");
+                            date.setHours(
+                              parseInt(hours, 10),
+                              parseInt(minutes, 10)
+                            );
+                          }
+                          setTempDate(date);
+                          setShowPicker(true);
+                        }}
+                        style={[
+                          styles.pickerPressable,
+                          { flex: 1, backgroundColor: "#FFF" },
+                        ]}
+                      >
+                        <Ionicons
+                          name="time-outline"
+                          size={20}
+                          color={MJM_BLUE}
+                        />
+                        <ThemedText style={{ color: "#000", marginLeft: 10 }}>
+                          {formatearHora24h(form[k])}
+                        </ThemedText>
+                      </Pressable>
+                    )}
+                    <Pressable
+                      style={styles.btnTime}
+                      onPress={() => capturarHoraActual(k)}
+                    >
+                      <Ionicons name="flash" size={20} color="white" />
+                    </Pressable>
+                  </View>
+                </View>
+              )
+            )}
+
+            {errorIntervaloStep2 ? (
+              <View
+                style={{
+                  backgroundColor: "#FFF5F5",
+                  borderLeftWidth: 4,
+                  borderLeftColor: "#D32F2F",
+                  padding: 12,
+                  borderRadius: 8,
+                  marginTop: 20,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  elevation: 2,
+                }}
+              >
+                <Ionicons
+                  name="alert-circle"
+                  size={20}
+                  color="#D32F2F"
+                  style={{ marginRight: 10 }}
+                />
+                <View style={{ flex: 1 }}>
+                  <ThemedText
+                    style={{
+                      color: "#D32F2F",
+                      fontSize: 13,
+                      fontWeight: "bold",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Error en los intervalos de tiempo
+                  </ThemedText>
+                  <ThemedText
+                    style={{ color: "#555", fontSize: 11, marginBottom: 2 }}
+                  >
+                    • El orden debe ser: Repliegue ≥ Llegada ≥ Alerta.
+                  </ThemedText>
+                  <ThemedText style={{ color: "#555", fontSize: 11 }}>
+                    • La duración total entre Alerta y Repliegue no debe superar
+                    las 12 horas.
                   </ThemedText>
                 </View>
               </View>
-
-              <View>
-                <ThemedText
-                  style={{
-                    fontSize: 10,
-                    color: MJM_BLUE,
-                    fontWeight: "bold",
-                    marginBottom: 5,
-                  }}
-                >
-                  HORA REGISTRO
-                </ThemedText>
-                <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-                  {Platform.OS === "web" ? (
-                    <View
-                      style={{
-                        flex: 1,
-                        height: 45,
-                        borderWidth: 1,
-                        borderColor: "#ccc",
-                        borderRadius: 8,
-                        backgroundColor: "#F5F5F5",
-                        justifyContent: "center",
-                        paddingHorizontal: 12,
-                      }}
-                    >
-                      <ThemedText style={{ fontSize: 16, color: "#333333" }}>
-                        {form.hora_alerta || "--:--"}
-                      </ThemedText>
-                    </View>
-                  ) : (
-                    <Pressable
-                      onPress={() => {
-                        const currentTime = form.hora_alerta;
-                        const date = new Date();
-                        if (currentTime && currentTime !== "00:00") {
-                          const [hours, minutes] = currentTime.split(":");
-                          date.setHours(
-                            parseInt(hours, 10),
-                            parseInt(minutes, 10)
-                          );
-                        }
-                        setTempDate(date);
-                        setShowPicker(true);
-                      }}
-                      style={[
-                        styles.pickerPressable,
-                        { flex: 1, backgroundColor: "#FFF", height: 45 },
-                      ]}
-                    >
-                      <Ionicons
-                        name="time-outline"
-                        size={20}
-                        color={MJM_BLUE}
-                      />
-                      <ThemedText
-                        style={{
-                          color: form.hora_alerta ? "#000" : "#888",
-                          marginLeft: 10,
-                          flex: 1,
-                        }}
-                      >
-                        {formatearHora24h(form.hora_alerta) || "00:00"}
-                      </ThemedText>
-                      <Ionicons name="chevron-down" size={18} color="#ccc" />
-                    </Pressable>
-                  )}
-
-                  <Pressable
-                    style={[
-                      styles.btnTime,
-                      {
-                        paddingHorizontal: 15,
-                        height: 45,
-                        justifyContent: "center",
-                      },
-                    ]}
-                    onPress={() => {
-                      const now = new Date();
-                      const timeString = now.toTimeString().slice(0, 5);
-                      setForm((prev: any) => ({
-                        ...prev,
-                        hora_alerta: timeString,
-                        hora_llegada: timeString,
-                        hora_repliegue: timeString,
-                      }));
-                    }}
-                  >
-                    <Ionicons name="flash" size={20} color="white" />
-                  </Pressable>
-                </View>
-              </View>
-            </View>
+            ) : null}
           </View>
         )}
 
         {step === 3 && (
-          <View style={styles.card}>
+          <View style={styles.cascadaContainer}>
             <ThemedText style={styles.sectionTitle}>
-              PASO 3: DETALLES FINALIZACIÓN
+              PASO 3: UBICACIÓN
             </ThemedText>
 
-            <View style={{ marginTop: 10 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 10,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                <Ionicons name="location" size={18} color={MJM_BLUE} />
+                <ThemedText
+                  style={[styles.cascadaTitle, { marginLeft: 5, flex: 1, fontSize: 11 }]}
+                >
+                  {modoBusquedaManual
+                    ? "BÚSQUEDA MANUAL"
+                    : "DIRECCIÓN DIRECTA (AV, CA, JR, PSJ, PQ, PLZ, EDF, BLK)"}
+                </ThemedText>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setModoBusquedaManual((prev) => !prev);
+                  setSelTipoVia(null);
+                  setSelVia(null);
+                  setVias([]);
+                  setCuadras([]);
+                  setForm((prev: any) => ({ ...prev, id_lugar: null }));
+                }}
+                style={[
+                  styles.btnToggleModo,
+                  modoBusquedaManual && { backgroundColor: "#E3F2FD" },
+                ]}
+              >
+                <ThemedText
+                  style={{ color: MJM_BLUE, fontSize: 10, fontWeight: "bold" }}
+                >
+                  {modoBusquedaManual ? "USAR LISTADO" : "POR CALLE/CUADRA"}
+                </ThemedText>
+              </Pressable>
+            </View>
+
+            {!modoBusquedaManual && (
+              <View style={{ marginBottom: 10 }}>
+                <Dropdown
+                  maxHeight={320}
+                  containerStyle={styles.dropdownContainer}
+                  itemContainerStyle={styles.dropdownItemContainer}
+                  itemTextStyle={styles.dropdownItemText}
+                  selectedTextStyle={{ color: "#000", fontSize: 14 }}
+                  style={[styles.dropdown, { borderColor: MJM_BLUE }]}
+                  data={catalogos.lugares}
+                  search
+                  searchPlaceholder="Buscar dirección..."
+                  labelField="label"
+                  valueField="value"
+                  placeholder="Seleccione la ubicación..."
+                  value={form.id_lugar}
+                  onFocus={() => {
+                    setForm((prev: any) => ({ ...prev, id_lugar: "" }));
+                  }}
+                  searchQuery={filtroOptimizado}
+                  placeholderStyle={{ color: "#666" }}
+                  onChange={(item) => {
+                    setForm((prev: any) => ({ ...prev, id_lugar: item.value }));
+                  }}
+                  flatListProps={{
+                    nestedScrollEnabled: true,
+                    keyboardShouldPersistTaps: "handled",
+                    initialNumToRender: 15,
+                    maxToRenderPerBatch: 15,
+                    windowSize: 5,
+                  }}
+                  activeColor="#E3F2FD"
+                  inputSearchStyle={styles.inputSearchStyle}
+                />
+              </View>
+            )}
+
+            {modoBusquedaManual && (
+              <View style={styles.cascadaGrid}>
+                <View style={{ flex: 1 }}>
+                  <ThemedText style={styles.labelSubCascada}>TIPO</ThemedText>
+                  <Dropdown
+                    containerStyle={styles.dropdownContainer}
+                    itemTextStyle={styles.dropdownItemText}
+                    style={styles.dropdownCascadaItem}
+                    data={(tiposVia || []).filter(
+                      (item: any) =>
+                        Number(item.value) !== 11 && Number(item.value) !== 13
+                    )}
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Tipo"
+                    value={selTipoVia}
+                    onChange={(item) => {
+                      handleTipoViaChange(item.value);
+                    }}
+                    placeholderStyle={{ fontSize: 11, color: "#999" }}
+                    selectedTextStyle={{
+                      fontSize: 11,
+                      fontWeight: "bold",
+                      color: MJM_BLUE,
+                    }}
+                    flatListProps={{
+                      nestedScrollEnabled: true,
+                      keyboardShouldPersistTaps: "handled",
+                    }}
+                    activeColor="#E3F2FD"
+                  />
+                </View>
+
+                <View style={{ flex: 2.2 }}>
+                  <ThemedText style={styles.labelSubCascada}>
+                    CALLE / VÍA
+                  </ThemedText>
+                  <Dropdown
+                    containerStyle={styles.dropdownContainer}
+                    itemTextStyle={styles.dropdownItemText}
+                    style={[
+                      styles.dropdownCascadaItem,
+                      !selTipoVia && styles.dropdownDisabled,
+                    ]}
+                    disable={!selTipoVia}
+                    data={vias || []}
+                    search
+                    searchPlaceholder="Calle..."
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Nombre de vía..."
+                    value={selVia}
+                    onChange={(item) => handleViaChange(item.value)}
+                    searchQuery={filtroOptimizado}
+                    placeholderStyle={{ fontSize: 11, color: "#999" }}
+                    selectedTextStyle={{
+                      fontSize: 11,
+                      fontWeight: "bold",
+                      color: MJM_BLUE,
+                    }}
+                    flatListProps={{
+                      nestedScrollEnabled: true,
+                      keyboardShouldPersistTaps: "handled",
+                      initialNumToRender: 15,
+                      maxToRenderPerBatch: 15,
+                      windowSize: 5,
+                    }}
+                    activeColor="#E3F2FD"
+                    inputSearchStyle={styles.inputSearchStyle}
+                  />
+                </View>
+
+                {cuadras && cuadras.length > 0 && (
+                  <View style={{ flex: 0.9 }}>
+                    <ThemedText style={styles.labelSubCascada}>CDRA</ThemedText>
+                    <Dropdown
+                      containerStyle={styles.dropdownContainer}
+                      itemTextStyle={styles.dropdownItemText}
+                      style={[
+                        styles.dropdownCascadaItem,
+                        !selVia && styles.dropdownDisabled,
+                      ]}
+                      disable={!selVia}
+                      data={cuadras}
+                      labelField="label"
+                      valueField="value"
+                      placeholder="N°"
+                      value={form.id_lugar}
+                      onFocus={() => {
+                        setForm((prev: any) => ({ ...prev, id_lugar: "" }));
+                      }}
+                      onChange={(item) =>
+                        setForm((prev: any) => ({
+                          ...prev,
+                          id_lugar: item.value,
+                        }))
+                      }
+                      placeholderStyle={{ fontSize: 11, color: "#999" }}
+                      selectedTextStyle={{
+                        fontSize: 11,
+                        fontWeight: "bold",
+                        color: MJM_BLUE,
+                      }}
+                      flatListProps={{
+                        nestedScrollEnabled: true,
+                        keyboardShouldPersistTaps: "handled",
+                      }}
+                      activeColor="#E3F2FD"
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+
+            <View style={{ marginTop: 20 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: 5,
+                }}
+              >
+                <Ionicons name="map-outline" size={14} color={MJM_BLUE} />
+                <ThemedText style={[styles.cascadaTitle, { marginLeft: 5 }]}>
+                  REFERENCIA
+                </ThemedText>
+              </View>
+              <TextInput
+                style={[
+                  styles.textAreaSmall,
+                  {
+                    borderColor:
+                      (form.referencia || "").trim().length >= 3
+                        ? MJM_BLUE
+                        : "#DDD",
+                  },
+                ]}
+                placeholder="Ej: Escriba una referencia cercana o indique el numeral exacto si lo conoce."
+                placeholderTextColor="#AAA"
+                maxLength={300}
+                value={form.referencia ?? ""}
+                onChangeText={(t) =>
+                  setForm((prev) => ({ ...prev, referencia: t }))
+                }
+                multiline
+              />
+            </View>
+          </View>
+        )}
+
+        {step === 4 && (
+          <View style={styles.card}>
+            <ThemedText style={styles.sectionTitle}>PASO 4: CIERRE</ThemedText>
+
+            <View style={{ marginTop: 10, marginBottom: 15 }}>
+              {(() => {
+                const activo = form.datos_importantes.por_orden_central;
+                return (
+                  <Pressable
+                    onPress={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        datos_importantes: {
+                          ...prev.datos_importantes,
+                          por_orden_central: !activo,
+                        },
+                      }))
+                    }
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: activo ? MJM_BLUE : "#E3F2FD",
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      borderRadius: 6,
+                      gap: 6,
+                      marginBottom: 12,
+                      alignSelf: "flex-start",
+                    }}
+                  >
+                    <Ionicons
+                      name={activo ? "checkbox-outline" : "square-outline"}
+                      size={14}
+                      color={activo ? "#FFF" : MJM_BLUE}
+                    />
+                    <ThemedText
+                      style={{
+                        fontSize: 10,
+                        fontWeight: "bold",
+                        color: activo ? "#FFF" : MJM_BLUE,
+                      }}
+                    >
+                      POR ORDEN DE LA CENTRAL
+                    </ThemedText>
+                  </Pressable>
+                );
+              })()}
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  marginVertical: 4,
+                }}
+              >
+                <Ionicons name="medical-outline" size={14} color={MJM_BLUE} />
+                <ThemedText
+                  style={[
+                    styles.cascadaTitle,
+                    { fontSize: 10, color: MJM_BLUE, fontWeight: "bold" },
+                  ]}
+                >
+                  TIPO DE ATENCIÓN REALIZADA
+                </ThemedText>
+              </View>
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  marginBottom: 12,
+                }}
+              >
+                {[
+                  { key: "control_fv_sv", label: "CONTROL DE FV O SV" },
+                  { key: "inyectable", label: "INYECTABLE" },
+                  { key: "curacion_topica", label: "CURACIÓN TÓPICA" },
+                  { key: "traslado_urgencia", label: "TRASLADO URG. / EME." },
+                ].map((item) => {
+                  const activo = (form.datos_importantes as any)[item.key];
+                  return (
+                    <Pressable
+                      key={item.key}
+                      onPress={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          datos_importantes: {
+                            ...prev.datos_importantes,
+                            [item.key]: !activo,
+                          },
+                        }))
+                      }
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor: activo ? MJM_BLUE : "#E3F2FD",
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderRadius: 6,
+                        gap: 5,
+                      }}
+                    >
+                      <Ionicons
+                        name={activo ? "checkbox-outline" : "square-outline"}
+                        size={13}
+                        color={activo ? "#FFF" : MJM_BLUE}
+                      />
+                      <ThemedText
+                        style={{
+                          fontSize: 9,
+                          fontWeight: "bold",
+                          color: activo ? "#FFF" : MJM_BLUE,
+                        }}
+                      >
+                        {item.label}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Pressable
+                onPress={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    datos_importantes: {
+                      ...prev.datos_importantes,
+                      pertenece_muni: !prev.datos_importantes.pertenece_muni,
+                    },
+                  }))
+                }
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: form.datos_importantes.pertenece_muni
+                    ? MJM_BLUE
+                    : "#E3F2FD",
+                  padding: 10,
+                  borderRadius: 8,
+                  borderWidth: 1.5,
+                  borderColor: MJM_BLUE,
+                  marginBottom: 10,
+                  gap: 8,
+                }}
+              >
+                <Ionicons
+                  name={
+                    form.datos_importantes.pertenece_muni
+                      ? "checkbox"
+                      : "square-outline"
+                  }
+                  size={18}
+                  color={form.datos_importantes.pertenece_muni ? "#FFF" : MJM_BLUE}
+                />
+                <ThemedText
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "bold",
+                    color: form.datos_importantes.pertenece_muni
+                      ? "#FFF"
+                      : MJM_BLUE,
+                  }}
+                >
+                  ¿Paciente atendido pertenece a la Municipalidad?
+                </ThemedText>
+              </Pressable>
+            </View>
+
+            {/* PACIENTES (2 FILAS ANTI-DESBORDE CON MOSAICOS M/F Y M/m) */}
+            <View
+              style={{
+                marginTop: 5,
+                marginBottom: 15,
+                borderTopWidth: 1,
+                borderTopColor: "#e2e8f0",
+                paddingTop: 12,
+              }}
+            >
               <View
                 style={{
                   flexDirection: "row",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: 5,
+                  marginBottom: 8,
                 }}
               >
                 <ThemedText
-                  style={{ fontSize: 10, color: MJM_BLUE, fontWeight: "bold" }}
+                  style={{ fontSize: 11, color: MJM_BLUE, fontWeight: "bold" }}
                 >
-                  RADIO{" "}
-                  <ThemedText
-                    style={{
-                      fontSize: 9,
-                      fontWeight: "normal",
-                      color: "#666",
-                    }}
-                  >
-                    (O elija "No corresponde")
-                  </ThemedText>
+                  PACIENTE(S) ({(form.victimas || []).length}/5)
                 </ThemedText>
-
-                <Pressable
-                  style={{
-                    backgroundColor:
-                      Number(form.id_radio) === 110 ? MJM_BLUE : "#e2e8f0",
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 6,
-                  }}
-                  onPress={() => setForm({ ...form, id_radio: 110 })}
-                >
-                  <ThemedText
+                {(form.victimas || []).length < 5 && (
+                  <Pressable
+                    onPress={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        victimas: [
+                          ...(prev.victimas || []),
+                          {
+                            sexo: "",
+                            nombres: "",
+                            dni: "",
+                            tipo_edad: "",
+                            edad: "",
+                            placa_victima: "",
+                          },
+                        ],
+                      }))
+                    }
                     style={{
-                      fontSize: 9,
-                      fontWeight: "bold",
-                      color:
-                        Number(form.id_radio) === 110 ? "white" : "#475569",
+                      backgroundColor: MJM_BLUE,
+                      paddingVertical: 5,
+                      paddingHorizontal: 10,
+                      borderRadius: 6,
                     }}
                   >
-                    {Number(form.id_radio) === 110
-                      ? "✓ No corresponde"
-                      : "+ No corresponde"}
-                  </ThemedText>
-                </Pressable>
+                    <ThemedText
+                      style={{ color: "#FFF", fontSize: 10, fontWeight: "bold" }}
+                    >
+                      ➕ Agregar Paciente
+                    </ThemedText>
+                  </Pressable>
+                )}
               </View>
 
-              <Dropdown
-                maxHeight={280}
-                containerStyle={styles.dropdownContainer}
-                itemContainerStyle={styles.dropdownItemContainer}
-                itemTextStyle={styles.dropdownItemText}
-                selectedTextProps={{ numberOfLines: 1 }}
-                style={styles.dropdown}
-                data={catalogos.radios}
-                search
-                searchPlaceholder="Buscar radio..."
-                searchQuery={filtroOptimizado}
-                labelField="label"
-                valueField="value"
-                placeholder="Seleccione Radio"
-                value={form.id_radio}
-                onFocus={() => {
-                  setForm((prev) => ({ ...prev, id_radio: null }));
-                }}
-                onChange={(v) => setForm({ ...form, id_radio: v.value })}
-                placeholderStyle={{ color: "#666", fontSize: 14 }}
-                selectedTextStyle={{
-                  color: "#000",
-                  fontSize: 14,
-             
-                }}
-                flatListProps={{
-                  nestedScrollEnabled: true,
-                  keyboardShouldPersistTaps: "handled",
-                }}
-                activeColor="#E3F2FD"
-                inputSearchStyle={styles.inputSearchStyle}
-              />
+              {(form.victimas || []).map((vic, index) => (
+                <View key={`vic-${index}`} style={styles.pacienteCard}>
+                  {/* FILA 1: Sexo (M/F) + Nombres + Eliminar */}
+                  <View style={styles.pacienteRow}>
+                    <View style={styles.miniMosaicGroup}>
+                      {(["M", "F"] as const).map((sx) => {
+                        const activo = vic.sexo === sx;
+                        return (
+                          <Pressable
+                            key={sx}
+                            onPress={() =>
+                              setForm((prev) => {
+                                const nuevas = [...prev.victimas];
+                                nuevas[index] = {
+                                  ...nuevas[index],
+                                  sexo: activo ? "" : sx,
+                                };
+                                return { ...prev, victimas: nuevas };
+                              })
+                            }
+                            style={[
+                              styles.miniMosaicBtn,
+                              activo && styles.miniMosaicBtnActive,
+                            ]}
+                          >
+                            <ThemedText
+                              style={[
+                                styles.miniMosaicText,
+                                activo && { color: "#FFF" },
+                              ]}
+                            >
+                              {sx}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
+                    <TextInput
+                      style={[styles.pacienteInput, { flex: 1 }]}
+                      placeholder="NOMBRES Y APELLIDOS"
+                      placeholderTextColor="#999"
+                      maxLength={80}
+                      value={vic.nombres ?? ""}
+                      onChangeText={(t) =>
+                        setForm((prev) => {
+                          const nuevas = [...prev.victimas];
+                          nuevas[index] = { ...nuevas[index], nombres: t };
+                          return { ...prev, victimas: nuevas };
+                        })
+                      }
+                    />
+
+                    <Pressable
+                      onPress={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          victimas: prev.victimas.filter((_, i) => i !== index),
+                        }))
+                      }
+                      style={styles.pacienteDeleteBtn}
+                    >
+                      <ThemedText
+                        style={{
+                          color: "#dc2626",
+                          fontWeight: "bold",
+                          fontSize: 12,
+                        }}
+                      >
+                        ✕
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+
+                  {/* FILA 2: DNI + Mayor/menor (M/m) + Edad + Placa */}
+                  <View style={[styles.pacienteRow, { marginTop: 6 }]}>
+                    <TextInput
+                      style={[styles.pacienteInput, { flex: 1.2 }]}
+                      placeholder="DNI"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                      maxLength={12}
+                      value={vic.dni ?? ""}
+                      onChangeText={(t) => {
+                        const val = t.replace(/\D/g, "");
+                        setForm((prev) => {
+                          const nuevas = [...prev.victimas];
+                          nuevas[index] = { ...nuevas[index], dni: val };
+                          return { ...prev, victimas: nuevas };
+                        });
+                      }}
+                    />
+
+                    <View style={styles.miniMosaicGroup}>
+                      {(["M", "m"] as const).map((te) => {
+                        const activo = vic.tipo_edad === te;
+                        return (
+                          <Pressable
+                            key={te}
+                            onPress={() =>
+                              setForm((prev) => {
+                                const nuevas = [...prev.victimas];
+                                nuevas[index] = {
+                                  ...nuevas[index],
+                                  tipo_edad: activo ? "" : te,
+                                };
+                                return { ...prev, victimas: nuevas };
+                              })
+                            }
+                            style={[
+                              styles.miniMosaicBtn,
+                              activo && styles.miniMosaicBtnActive,
+                            ]}
+                          >
+                            <ThemedText
+                              style={[
+                                styles.miniMosaicText,
+                                activo && { color: "#FFF" },
+                              ]}
+                            >
+                              {te}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
+                    <TextInput
+                      style={[
+                        styles.pacienteInput,
+                        { flex: 0.7, textAlign: "center" },
+                      ]}
+                      placeholder="EDAD"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                      maxLength={3}
+                      value={vic.edad ?? ""}
+                      onChangeText={(t) => {
+                        const val = t.replace(/\D/g, "");
+                        setForm((prev) => {
+                          const nuevas = [...prev.victimas];
+                          nuevas[index] = { ...nuevas[index], edad: val };
+                          return { ...prev, victimas: nuevas };
+                        });
+                      }}
+                    />
+
+                    <TextInput
+                      style={[styles.pacienteInput, { flex: 1 }]}
+                      placeholder="PLACA"
+                      placeholderTextColor="#999"
+                      maxLength={10}
+                      value={vic.placa_victima ?? ""}
+                      onChangeText={(t) =>
+                        setForm((prev) => {
+                          const nuevas = [...prev.victimas];
+                          nuevas[index] = {
+                            ...nuevas[index],
+                            placa_victima: t.toUpperCase(),
+                          };
+                          return { ...prev, victimas: nuevas };
+                        })
+                      }
+                    />
+                  </View>
+
+                  <ThemedText style={styles.pacienteHint}>
+                    Sexo: M (Masc) / F (Fem)  •  Edad: M (Mayor) / m (menor)
+                  </ThemedText>
+                </View>
+              ))}
             </View>
 
-            <View style={{ marginTop: 15 }}>
-              <ThemedText
-                style={{
-                  fontSize: 10,
-                  color: MJM_BLUE,
-                  fontWeight: "bold",
-                  marginBottom: 5,
-                }}
-              >
-                CARGO - RESPONSABILIDAD
-              </ThemedText>
-              <Dropdown
-                maxHeight={280}
-                containerStyle={styles.dropdownContainer}
-                itemContainerStyle={styles.dropdownItemContainer}
-                itemTextStyle={styles.dropdownItemText}
-                selectedTextProps={{ numberOfLines: 1 }}
-                style={styles.dropdown}
-                data={zonasFiltradas}
-                search
-                searchPlaceholder="Buscar zona..."
-                searchQuery={filtroOptimizado}
-                labelField="label"
-                valueField="value"
-                placeholder="Seleccione Zona"
-                value={form.id_zona}
-                onFocus={() => {
-                  setForm((prev) => ({ ...prev, id_zona: null }));
-                }}
-                onChange={(v) => setForm({ ...form, id_zona: v.value })}
-                placeholderStyle={{ color: "#666", fontSize: 14 }}
-                selectedTextStyle={{
-                  color: "#000",
-                  fontSize: 14,
-              
-                }}
-                flatListProps={{
-                  nestedScrollEnabled: true,
-                  keyboardShouldPersistTaps: "handled",
-                }}
-                activeColor="#E3F2FD"
-                inputSearchStyle={styles.inputSearchStyle}
-              />
-            </View>
-
-            <View style={{ marginTop: 15 }}>
-              <ThemedText
-                style={{
-                  fontSize: 10,
-                  color: MJM_BLUE,
-                  fontWeight: "bold",
-                  marginBottom: 5,
-                }}
-              >
-                DATOS IMPORTANTES
-              </ThemedText>
-              <Pressable
-                onPress={() => {
-                  const actual = form.descripcion || "";
-                  if (actual.startsWith(textoCentralFirma)) {
-                    const limpio = actual
-                      .replace(textoCentralFirma, "")
-                      .replace(/^[\n\r]+/, "")
-                      .trimStart();
-                    setForm((prev) => ({ ...prev, descripcion: limpio }));
-                  } else {
-                    const limpioActual = actual.trim();
-                    const capitalizadoActual =
-                      limpioActual.length > 0
-                        ? limpioActual.charAt(0).toUpperCase() +
-                          limpioActual.slice(1)
-                        : limpioActual;
-                    setForm((prev) => ({
-                      ...prev,
-                      descripcion:
-                        capitalizadoActual.length === 0
-                          ? `${textoCentralFirma}\n\n`
-                          : `${textoCentralFirma}\n\n${capitalizadoActual}`,
-                    }));
-                  }
-                }}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  alignSelf: "flex-start",
-                  backgroundColor: firmaActiva ? MJM_BLUE : "#E3F2FD",
-                  paddingVertical: 6,
-                  paddingHorizontal: 10,
-                  borderRadius: 6,
-                  marginBottom: 6,
-                  gap: 6,
-                }}
-              >
-                <Ionicons
-                  name={firmaActiva ? "checkbox-outline" : "square-outline"}
-                  size={14}
-                  color={firmaActiva ? "#FFF" : MJM_BLUE}
-                />
-                <ThemedText
-                  style={{
-                    fontSize: 10,
-                    fontWeight: "bold",
-                    color: firmaActiva ? "#FFF" : MJM_BLUE,
-                  }}
-                >
-                  inicio de servicio
-                </ThemedText>
-              </Pressable>
-
+            {/* DESCRIPCIÓN */}
+            <View>
               <View
                 style={[
+                  styles.textArea,
                   {
                     backgroundColor: "#FFFFFF",
-                    padding: 10,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#DDDDDD",
-                    height: 140,
-                    maxHeight: 140,
+                    height: 90,
+                    maxHeight: 130,
+                    padding: 12,
                     justifyContent: "flex-start",
                     overflow: "hidden",
                   },
                   getDynamicBorderStyle((form.descripcion || "").trim().length >= 3),
                 ]}
               >
-                {firmaActiva && (
-                  <View
-                    style={{
-                      alignSelf: "flex-start",
-                      backgroundColor: "#F1F5F9",
-                      paddingVertical: 3,
-                      paddingHorizontal: 8,
-                      borderRadius: 4,
-                      marginBottom: 8,
-                      borderWidth: 1,
-                      borderColor: "#E2E8F0",
-                    }}
-                  >
-                    <ThemedText
-                      style={{
-                        fontSize: 8,
-                        fontWeight: "bold",
-                        color: "#475569",
-                      }}
-                    >
-                      {textoCentralFirma}
-                    </ThemedText>
-                  </View>
-                )}
-
                 <TextInput
                   style={[
                     {
@@ -1894,135 +2126,283 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                     Platform.OS === "web" &&
                       ({ outlineStyle: "none", boxShadow: "none" } as any),
                   ]}
-                  placeholder="Registre los datos de la persona que relevó u otros datos importantes"
+                  placeholder="Registre el número del formato y otros detalles"
                   placeholderTextColor="#999999"
                   multiline={true}
                   maxLength={1500}
                   scrollEnabled={true}
-                  value={textoDescripcionLibre}
+                  value={form.descripcion ?? ""}
                   onChangeText={(t) => {
                     const textoCapitalizado =
                       t.length > 0 ? t.charAt(0).toUpperCase() + t.slice(1) : t;
-
                     setForm((prev) => ({
                       ...prev,
-                      descripcion: firmaActiva
-                        ? textoCapitalizado.length > 0
-                          ? `${textoCentralFirma}\n${textoCapitalizado}`
-                          : textoCentralFirma
-                        : textoCapitalizado,
+                      descripcion: textoCapitalizado,
                     }));
                   }}
                 />
               </View>
+
+              <ThemedText
+                style={{
+                  fontSize: 10,
+                  textAlign: "right",
+                  marginTop: 2,
+                  color: "#888",
+                }}
+              >
+                {`${(form.descripcion || "").length} caracteres`}
+              </ThemedText>
             </View>
 
-            <View style={{ marginTop: 15 }}>
-              <ThemedText
-                style={{ fontSize: 10, color: MJM_BLUE, fontWeight: "bold" }}
+            {/* ACCIONES DE FOTOS */}
+            <View style={[styles.photoActions, { marginTop: 8 }]}>
+              <Pressable style={styles.btnCamAction} onPress={tomarFoto}>
+                <Ionicons name="camera" size={20} color="white" />
+                <ThemedText style={styles.btnCamText}>FOTO</ThemedText>
+              </Pressable>
+              <Pressable
+                style={[styles.btnCamAction, { backgroundColor: "#666" }]}
+                onPress={seleccionarGaleria}
               >
-                EVIDENCIA FOTOGRÁFICA{" "}
-                <ThemedText
-                  style={{
-                    fontSize: 9,
-                    fontWeight: "normal",
-                    color:
-                      Number(form.id_tipo_patrullaje) ===
-                      ID_PATRULLAJE_MOTORIZADO
-                        ? "#d9534f"
-                        : "#666",
-                  }}
-                >
-                  {Number(form.id_tipo_patrullaje) === ID_PATRULLAJE_MOTORIZADO
-                    ? "(Obligatorio: Foto del panel)"
-                    : "(Opcional)"}
-                </ThemedText>
-              </ThemedText>
+                <Ionicons name="images" size={20} color="white" />
+                <ThemedText style={styles.btnCamText}>GALERÍA</ThemedText>
+              </Pressable>
+            </View>
 
-              <View style={[styles.photoActions, { marginTop: 5 }]}>
-                <Pressable style={styles.btnCamAction} onPress={tomarFoto}>
-                  <Ionicons name="camera" size={20} color="white" />
-                </Pressable>
-                <Pressable
-                  style={[styles.btnCamAction, { backgroundColor: "#666" }]}
-                  onPress={seleccionarGaleria}
-                >
-                  <Ionicons name="images" size={20} color="white" />
-                </Pressable>
-              </View>
+            <ThemedText
+              style={[
+                styles.photoCounter,
+                { marginVertical: 5 },
+                fotos.length === MAX_FOTOS && {
+                  color: "red",
+                  fontWeight: "bold",
+                },
+              ]}
+            >
+              {`${fotos.length} de ${MAX_FOTOS} fotos`}
+            </ThemedText>
 
+            {fotos.length > 0 && (
               <ScrollView
                 horizontal
-                style={{ marginTop: 10 }}
+                style={[styles.photoCarousel, { maxHeight: 110 }]}
+                contentContainerStyle={{ paddingTop: 8, paddingRight: 16 }}
                 showsHorizontalScrollIndicator={false}
               >
-                {fotos.map((f, i) => (
-                  <View key={f.id || i} style={styles.wrapperFoto}>
-                    <Image source={{ uri: f.uri }} style={styles.previewFoto} />
+                {fotos.map((f) => (
+                  <View key={f.id} style={styles.photoWrapper}>
+                    <Image source={{ uri: f.uri }} style={styles.photoThumb} />
+
                     {f.uploading && (
                       <View style={styles.uploadingBadge}>
                         <ActivityIndicator size="small" color="#FFFFFF" />
+                        <ThemedText
+                          style={{
+                            color: "white",
+                            fontSize: 9,
+                            fontWeight: "bold",
+                          }}
+                        >
+                          Subiendo...
+                        </ThemedText>
                       </View>
                     )}
+
                     <Pressable
-                      style={styles.btnBorrarFoto}
+                      style={styles.removePhoto}
                       onPress={() => {
                         liberarUriPreview(f.uri);
-                        setFotos((p) => p.filter((_, idx) => idx !== i));
+                        setFotos((prev) =>
+                          prev.filter((item) => item.id !== f.id)
+                        );
                       }}
                     >
-                      <Ionicons name="close-circle" size={20} color="red" />
+                      <Ionicons name="close-circle" size={22} color="red" />
                     </Pressable>
                   </View>
                 ))}
               </ScrollView>
-            </View>
-          </View>
-        )}
+            )}
 
-        <View style={styles.navRow}>
-          {step > 1 && (
-            <Pressable style={styles.btnBack} onPress={() => setStep(step - 1)}>
-              <ThemedText style={{ color: MJM_BLUE, fontWeight: "bold" }}>
-                Atrás
-              </ThemedText>
-            </Pressable>
-          )}
-
-          {step < 3 ? (
-            <Pressable
-              style={[styles.btnNext, !canAdvance() && styles.btnDisabled]}
-              disabled={!canAdvance()}
-              onPress={() => setStep(step + 1)}
-            >
-              <ThemedText style={{ color: "white", fontWeight: "bold" }}>
-                Siguiente
-              </ThemedText>
-            </Pressable>
-          ) : (
             <Pressable
               style={[
-                styles.btnNext,
-                { backgroundColor: "#28a745" },
-                (!canAdvance() || hayFotosSubiendo || loading) &&
-                  styles.btnDisabled,
+                styles.btnSave,
+                {
+                  marginTop: 15,
+                  backgroundColor:
+                    pasoActualValido && !hayFotosSubiendo
+                      ? "#28a745"
+                      : "#A0A0A0",
+                  opacity: pasoActualValido && !hayFotosSubiendo ? 1 : 0.6,
+                },
               ]}
-              disabled={!canAdvance() || hayFotosSubiendo || loading}
               onPress={enviarRegistro}
+              disabled={!pasoActualValido || hayFotosSubiendo || loading}
             >
               <ThemedText style={{ color: "white", fontWeight: "bold" }}>
                 {loading
-                  ? "Subiendo..."
+                  ? "ENVIANDO..."
                   : hayFotosSubiendo
-                  ? "Subiendo foto..."
-                  : "Finalizar"}
+                  ? "SUBIENDO FOTOS..."
+                  : "FINALIZAR REGISTRO"}
               </ThemedText>
             </Pressable>
-          )}
-        </View>
+          </View>
+        )}
       </ScrollView>
 
-      {/* MODAL SELECCIONAR PLACA / UNIDAD (AMPLIO Y RÁPIDO) */}
+      <View
+        style={[
+          styles.navContainer,
+          {
+            paddingBottom: insets.bottom + 25,
+            height: "auto",
+            backgroundColor: "white",
+            borderTopColor: "#eeeeee",
+          },
+        ]}
+      >
+        <Pressable
+          style={[styles.navBtn, { borderColor: "#eeeeee" }]}
+          onPress={() => setStep((s) => Math.max(1, s - 1))}
+          disabled={step === 1}
+        >
+          <ThemedText style={{ color: step === 1 ? "#ccc" : MJM_BLUE }}>
+            ANTERIOR
+          </ThemedText>
+        </Pressable>
+
+        {step < 4 && (
+          <Pressable
+            style={[
+              styles.navBtn,
+              {
+                backgroundColor: pasoActualValido ? MJM_BLUE : "#cccccc",
+                borderColor: pasoActualValido ? MJM_BLUE : "#dddddd",
+              },
+            ]}
+            onPress={() => setStep((s) => Math.min(4, s + 1))}
+            disabled={!pasoActualValido}
+          >
+            <ThemedText style={{ color: "white" }}>SIGUIENTE</ThemedText>
+          </Pressable>
+        )}
+      </View>
+
+      <Modal visible={loading} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: "#FFFFFF" }]}>
+            <ThemedText style={[styles.progressTitle, { color: MJM_BLUE }]}>
+              {uploadStatus}
+            </ThemedText>
+
+            {!isFinished ? (
+              <>
+                <View style={styles.progressBarBackground}>
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      { width: `${uploadProgress}%` },
+                    ]}
+                  />
+                </View>
+                <ThemedText style={styles.progressPercentage}>
+                  {uploadProgress}%
+                </ThemedText>
+              </>
+            ) : (
+              <Ionicons name="checkmark-circle" size={60} color={MJM_BLUE} />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {showPicker &&
+        (Platform.OS === "ios" ? (
+          <Modal transparent animationType="fade" visible={showPicker}>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+                backgroundColor: "rgba(0,0,0,0.5)",
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: "white",
+                  padding: 20,
+                  borderRadius: 12,
+                  width: "85%",
+                  alignItems: "center",
+                }}
+              >
+                <DateTimePicker
+                  value={tempDate}
+                  mode={pickerMode}
+                  display="spinner"
+                  is24Hour={true}
+                  maximumDate={pickerMode === "date" ? new Date() : undefined}
+                  locale="es-ES"
+                  themeVariant="light"
+                  onChange={(_, selectedDate) => {
+                    if (selectedDate) setTempDate(selectedDate);
+                  }}
+                />
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 15 }}>
+                  <Pressable
+                    style={{
+                      flex: 1,
+                      padding: 10,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      backgroundColor: "#eee",
+                    }}
+                    onPress={() => {
+                      setShowPicker(false);
+                      setActiveField(null);
+                    }}
+                  >
+                    <ThemedText style={{ color: "#333" }}>Cancelar</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={{
+                      flex: 1,
+                      padding: 10,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      backgroundColor: MJM_BLUE,
+                    }}
+                    onPress={confirmIOSSelection}
+                  >
+                    <ThemedText style={{ color: "white", fontWeight: "bold" }}>
+                      Confirmar
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={tempDate}
+            mode={pickerMode}
+            display={pickerMode === "date" ? "calendar" : "spinner"}
+            is24Hour={true}
+            maximumDate={pickerMode === "date" ? new Date() : undefined}
+            onChange={(event, selectedDate) => {
+              setShowPicker(false);
+              if (event?.type === "dismissed" || !selectedDate) {
+                setActiveField(null);
+                return;
+              }
+              procesarSeleccionAndroid(selectedDate);
+            }}
+          />
+        ))}
+
+      {/* MODAL SELECCIÓN DE PLACA DE MOTO */}
       <Modal
         visible={modalPlacaVisible}
         transparent
@@ -2046,7 +2426,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
               <ThemedText
                 style={{ fontSize: 15, fontWeight: "bold", color: MJM_BLUE }}
               >
-                Seleccionar Placa / Unidad
+                Seleccionar Motocicleta
               </ThemedText>
               <Pressable onPress={() => setModalPlacaVisible(false)}>
                 <Ionicons name="close-circle" size={26} color="#666" />
@@ -2062,9 +2442,9 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                   marginBottom: 10,
                 },
               ]}
-              placeholder="Buscar placa o N° unidad..."
+              placeholder="Buscar placa o N° moto..."
               placeholderTextColor="#999"
-              value={busquedaPlaca}
+              value={busquedaPlaca ?? ""}
               onChangeText={setBusquedaPlaca}
               autoCapitalize="characters"
             />
@@ -2085,6 +2465,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                     onPress={() => {
                       setUnidadForm((prev) => ({
                         ...prev,
+                        id_tipo_vehiculo: ID_MOTOCICLETA,
                         id_unidad: item.value,
                         placa: item.label,
                       }));
@@ -2118,432 +2499,117 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
                     fontSize: 13,
                   }}
                 >
-                  No se encontraron placas.
+                  No se encontraron motocicletas.
                 </ThemedText>
               }
             />
           </View>
         </View>
       </Modal>
-
-      {/* MODAL CHECKLIST */}
-      <Modal
-        animationType="slide"
-        transparent
-        visible={modalChecklistVisible}
-        onRequestClose={() => {
-          setModalChecklistVisible(false);
-          setMostrarFallas(false);
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalContent,
-              { width: "94%", maxHeight: "90%", padding: 0 },
-            ]}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: 20,
-                borderBottomWidth: 1,
-                borderBottomColor: "#eee",
-              }}
-            >
-              <View>
-                <ThemedText
-                  style={{ fontSize: 18, fontWeight: "bold", color: MJM_BLUE }}
-                >
-                  📋 CHECKLIST OPERATIVO
-                </ThemedText>
-                <ThemedText style={{ fontSize: 12, color: "#666" }}>
-                  UNIDAD: {unidadTemporal?.placa}
-                </ThemedText>
-              </View>
-              <Pressable
-                onPress={() => {
-                  setModalChecklistVisible(false);
-                  setMostrarFallas(false);
-                }}
-                style={{
-                  padding: 8,
-                  backgroundColor: "#f0f0f0",
-                  borderRadius: 20,
-                }}
-              >
-                <Ionicons name="close" size={20} color="#333" />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={{ padding: 20 }}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={{ marginBottom: 20 }}>
-                <ThemedText
-                  style={{ fontSize: 10, color: MJM_BLUE, fontWeight: "bold" }}
-                >
-                  ODÓMETRO INICIAL
-                </ThemedText>
-                <TextInput
-                  style={[
-                    styles.modalInputText,
-                    { backgroundColor: "#f8fafc", fontSize: 16 },
-                  ]}
-                  placeholder="Ingrese kilometraje..."
-                  keyboardType="numeric"
-                  value={odometroInicial}
-                  onChangeText={(text) =>
-                    setOdometroInicial(text.replace(/[^0-9]/g, ""))
-                  }
-                />
-              </View>
-
-              <Pressable
-                style={{
-                  backgroundColor: mostrarFallas ? "#fee2e2" : "#f1f5f9",
-                  padding: 14,
-                  borderRadius: 12,
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: mostrarFallas ? "#fca5a5" : "#cbd5e1",
-                  marginBottom: 20,
-                }}
-                onPress={() => setMostrarFallas(!mostrarFallas)}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <Ionicons
-                    name="alert-circle-outline"
-                    size={20}
-                    color={mostrarFallas ? "#dc2626" : MJM_BLUE}
-                  />
-                  <ThemedText
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "bold",
-                      color: mostrarFallas ? "#991b1b" : MJM_BLUE,
-                    }}
-                  >
-                    {mostrarFallas
-                      ? "Ocultar Reporte de Fallas"
-                      : "Reportar Falla (Opcional)"}
-                  </ThemedText>
-                </View>
-                <Ionicons
-                  name={mostrarFallas ? "chevron-up" : "chevron-down"}
-                  size={20}
-                  color={mostrarFallas ? "#991b1b" : "#64748b"}
-                />
-              </Pressable>
-
-              {mostrarFallas && (
-                <View>
-                  {Object.entries(
-                    (checklistItems || []).reduce(
-                      (acc: Record<string, any[]>, item: any) => {
-                        const cat = item.nombre_categoria || "GENERAL";
-                        if (!acc[cat]) acc[cat] = [];
-                        acc[cat].push(item);
-                        return acc;
-                      },
-                      {}
-                    )
-                  ).map(([categoria, items]) => (
-                    <View key={categoria} style={{ marginBottom: 20 }}>
-                      <ThemedText
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "800",
-                          color: MJM_BLUE,
-                          marginBottom: 10,
-                          backgroundColor: "#eef2ff",
-                          paddingHorizontal: 10,
-                          paddingVertical: 4,
-                          borderRadius: 4,
-                        }}
-                      >
-                        {categoria.toUpperCase()}
-                      </ThemedText>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          flexWrap: "wrap",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        {items.map((item: any) => {
-                          const resp = checklistRespuestas[item.id_item] || {
-                            conforme: true,
-                            obs: "",
-                          };
-                          return (
-                            <View
-                              key={item.id_item}
-                              style={{ width: "48%", marginBottom: 15 }}
-                            >
-                              <Pressable
-                                style={{
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  backgroundColor: resp.conforme
-                                    ? "#fff"
-                                    : "#fff5f5",
-                                  padding: 10,
-                                  borderRadius: 12,
-                                  borderWidth: 1,
-                                  borderColor: resp.conforme
-                                    ? "#e2e8f0"
-                                    : "#feb2b2",
-                                  minHeight: 85,
-                                }}
-                                onPress={() =>
-                                  setChecklistRespuestas((prev) => ({
-                                    ...prev,
-                                    [item.id_item]: {
-                                      conforme: !(
-                                        prev[item.id_item]?.conforme ?? true
-                                      ),
-                                      obs: !(prev[item.id_item]?.conforme ?? true)
-                                        ? ""
-                                        : prev[item.id_item]?.obs || "",
-                                    },
-                                  }))
-                                }
-                              >
-                                <Ionicons
-                                  name={
-                                    resp.conforme
-                                      ? "checkmark-circle"
-                                      : "alert-circle"
-                                  }
-                                  size={28}
-                                  color={
-                                    resp.conforme ? "#22c55e" : "#ef4444"
-                                  }
-                                />
-                                <ThemedText
-                                  style={{
-                                    fontSize: 11,
-                                    textAlign: "center",
-                                    marginTop: 6,
-                                    color: resp.conforme
-                                      ? "#334155"
-                                      : "#c53030",
-                                  }}
-                                >
-                                  {item.nombre_item}
-                                </ThemedText>
-                              </Pressable>
-                              {!resp.conforme && (
-                                <TextInput
-                                  style={{
-                                    marginTop: 5,
-                                    backgroundColor: "#fff",
-                                    borderWidth: 1,
-                                    borderColor: "#feb2b2",
-                                    padding: 8,
-                                    borderRadius: 8,
-                                    fontSize: 10,
-                                  }}
-                                  placeholder="Falla..."
-                                  value={resp.obs}
-                                  onChangeText={(text) =>
-                                    setChecklistRespuestas((prev) => ({
-                                      ...prev,
-                                      [item.id_item]: {
-                                        conforme: false,
-                                        obs: text,
-                                      },
-                                    }))
-                                  }
-                                />
-                              )}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-
-            <View
-              style={{
-                padding: 20,
-                borderTopWidth: 1,
-                borderTopColor: "#eee",
-              }}
-            >
-              <Pressable
-                style={{
-                  backgroundColor: MJM_BLUE,
-                  paddingVertical: 15,
-                  borderRadius: 12,
-                  alignItems: "center",
-                }}
-                onPress={confirmarChecklistUnidad}
-              >
-                <ThemedText
-                  style={{ color: "white", fontWeight: "bold", fontSize: 16 }}
-                >
-                  GUARDAR CHECKLIST
-                </ThemedText>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL PROGRESO */}
-      <Modal
-        transparent
-        visible={loading && uploadProgress > 0}
-        animationType="fade"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ThemedText style={styles.progressTitle}>{uploadStatus}</ThemedText>
-            <View style={styles.progressBarBackground}>
-              <View
-                style={[styles.progressBarFill, { width: `${uploadProgress}%` }]}
-              />
-            </View>
-            <ThemedText style={styles.progressPercentage}>
-              {uploadProgress}%
-            </ThemedText>
-          </View>
-        </View>
-      </Modal>
-
-      {/* DATE/TIME PICKER NATIVO */}
-      {showPicker &&
-        (Platform.OS === "ios" ? (
-          <Modal transparent animationType="fade" visible={showPicker}>
-            <View
-              style={{
-                flex: 1,
-                justifyContent: "center",
-                alignItems: "center",
-                backgroundColor: "rgba(0,0,0,0.5)",
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: "white",
-                  padding: 20,
-                  borderRadius: 12,
-                  width: "85%",
-                  alignItems: "center",
-                }}
-              >
-                <DateTimePicker
-                  value={tempDate}
-                  mode={pickerMode}
-                  display="spinner"
-                  is24Hour={true}
-                  locale="es-ES"
-                  themeVariant="light"
-                  onChange={(_, selectedDate) => {
-                    if (selectedDate) setTempDate(selectedDate);
-                  }}
-                />
-                <View style={{ flexDirection: "row", gap: 10, marginTop: 15 }}>
-                  <Pressable
-                    style={{
-                      flex: 1,
-                      padding: 10,
-                      borderRadius: 8,
-                      alignItems: "center",
-                      backgroundColor: "#eee",
-                    }}
-                    onPress={() => setShowPicker(false)}
-                  >
-                    <ThemedText style={{ color: "#333" }}>Cancelar</ThemedText>
-                  </Pressable>
-                  <Pressable
-                    style={{
-                      flex: 1,
-                      padding: 10,
-                      borderRadius: 8,
-                      alignItems: "center",
-                      backgroundColor: MJM_BLUE,
-                    }}
-                    onPress={() => {
-                      const horas = String(tempDate.getHours()).padStart(2, "0");
-                      const minutos = String(tempDate.getMinutes()).padStart(2, "0");
-                      const timeString = `${horas}:${minutos}`;
-                      setForm((prev: any) => ({
-                        ...prev,
-                        hora_alerta: timeString,
-                        hora_llegada: timeString,
-                        hora_repliegue: timeString,
-                      }));
-                      setShowPicker(false);
-                    }}
-                  >
-                    <ThemedText style={{ color: "white", fontWeight: "bold" }}>
-                      Confirmar
-                    </ThemedText>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </Modal>
-        ) : (
-          <DateTimePicker
-            value={tempDate}
-            mode="time"
-            display="spinner"
-            is24Hour={true}
-            locale="es-ES"
-            themeVariant="light"
-            onChange={(event, selectedDate) => {
-              setShowPicker(false);
-              if (event?.type !== "dismissed" && selectedDate) {
-                const horas = String(selectedDate.getHours()).padStart(2, "0");
-                const minutos = String(selectedDate.getMinutes()).padStart(2, "0");
-                const timeString = `${horas}:${minutos}`;
-                setForm((prev: any) => ({
-                  ...prev,
-                  hora_alerta: timeString,
-                  hora_llegada: timeString,
-                  hora_repliegue: timeString,
-                }));
-              }
-            }}
-          />
-        ))}
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
+  dropdownDisabled: { backgroundColor: "#F5F5F5", borderColor: "#CCC" },
+  textAreaSmall: {
+    minHeight: 85,
+    textAlignVertical: "top",
+    color: "#000",
+    backgroundColor: "#FFF",
+    padding: 12,
+    fontSize: 14,
+    borderWidth: 1.5,
+    borderRadius: 10,
+  },
   main: {
     flex: 1,
     backgroundColor: "#FFFFFF",
   },
-  scroll: {
-    paddingHorizontal: 15,
-    paddingBottom: 100,
+  scroll: { paddingHorizontal: 15, paddingBottom: 100 },
+  card: {
+    backgroundColor: "#FFFFFF",
+    padding: 18,
+    borderRadius: 15,
+    elevation: 0,
+    borderWidth: 1,
+    borderColor: "#EFEFEF",
   },
-  stepperContainer: {
+  cascadaContainer: {
+    marginTop: 15,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F9FBFF",
+    borderWidth: 1,
+    borderColor: "#E1E8F5",
+  },
+  unitCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 8,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
+  },
+  unitCardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F0F5FF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  labelSubCascada: {
+    fontSize: 9,
+    color: MJM_BLUE,
+    fontWeight: "800",
+    marginBottom: 3,
+    marginLeft: 2,
+  },
+  listadoUnidadesContainer: {
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#e0e0e0",
+    paddingTop: 15,
+  },
+  listadoHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  listadoTitle: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#888",
+    letterSpacing: 1,
+  },
+  unitCardPlaca: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: MJM_BLUE,
+  },
+  unitCardSub: {
+    fontSize: 11,
+    color: "#666",
+  },
+  unitCardRemove: {
+    padding: 8,
+  },
+    stepperContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginVertical: 12,
-    gap: 12,
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 10,
   },
+  stepperTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: MJM_BLUE,
+  },
+
   circle: {
     width: 24,
     height: 24,
@@ -2559,28 +2625,234 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: "center",
   },
-  card: {
-    backgroundColor: "#FFFFFF",
-    padding: 18,
-    borderRadius: 15,
-    elevation: 0,
+  label: { fontSize: 11, fontWeight: "bold", marginTop: 15, color: "#444" },
+  timeRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  btnTime: { backgroundColor: MJM_BLUE, padding: 10, borderRadius: 10 },
+  pickerPressable: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    backgroundColor: "#f4f4f4",
+    borderRadius: 10,
+    marginTop: 5,
     borderWidth: 1,
-    borderColor: "#EFEFEF",
-    marginBottom: 15,
   },
-  label: {
+  btnToggleModo: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#F5F5F5",
+    borderWidth: 1.5,
+    borderColor: MJM_BLUE,
+  },
+  dropdown: {
+    height: 44,
+    borderBottomWidth: 1.5,
+    borderBottomColor: "#eee",
+    marginTop: 8,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: "#FFFFFF",
+  },
+  dropdownContainer: {
+    borderRadius: 12,
+    marginTop: 5,
+    elevation: 5,
+    backgroundColor: "white",
+  },
+  dropdownItemContainer: {
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: "#1e293b",
+    lineHeight: 20,
+  },
+  modalPlacaBox: {
+    backgroundColor: "#FFFFFF",
+    width: "92%",
+    maxWidth: 480,
+    height: Math.min(500, Math.round(SCREEN_HEIGHT * 0.72)),
+    borderRadius: 16,
+    padding: 16,
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  pacienteCard: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
+  },
+  pacienteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    width: "100%",
+  },
+  pacienteInput: {
+    minWidth: 0,
+    height: 32,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    fontSize: 11,
+    backgroundColor: "#FFF",
+    color: "#000",
+  },
+  miniMosaicGroup: {
+    flexDirection: "row",
+    gap: 3,
+    flexShrink: 0,
+  },
+  miniMosaicBtn: {
+    width: 26,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: MJM_BLUE,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  miniMosaicBtnActive: {
+    backgroundColor: MJM_BLUE,
+  },
+  miniMosaicText: {
     fontSize: 11,
     fontWeight: "bold",
-    marginTop: 15,
-    color: "#444",
-  },
-  labelSubCascada: {
-    fontSize: 9,
     color: MJM_BLUE,
-    fontWeight: "800",
-    marginBottom: 3,
-    marginLeft: 2,
   },
+  pacienteDeleteBtn: {
+    width: 28,
+    height: 32,
+    flexShrink: 0,
+    backgroundColor: "#fee2e2",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 6,
+  },
+  pacienteHint: {
+    fontSize: 9,
+    color: "#64748b",
+    marginTop: 4,
+  },
+  textArea: {
+    borderWidth: 1.5,
+    borderColor: "#eee",
+    height: 100,
+    marginTop: 15,
+    padding: 12,
+    borderRadius: 10,
+    textAlignVertical: "top",
+    backgroundColor: "white",
+  },
+  photoActions: { flexDirection: "row", gap: 10, marginTop: 20 },
+  btnCamAction: {
+    flex: 1,
+    backgroundColor: "#444",
+    padding: 12,
+    borderRadius: 12,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  btnCamText: { color: "white", fontSize: 12, fontWeight: "bold" },
+  photoCounter: {
+    fontSize: 10,
+    color: "#888",
+    marginTop: 8,
+    textAlign: "right",
+  },
+  photoCarousel: { marginTop: 15 },
+  cascadaGrid: {
+    flexDirection: "row",
+    gap: 6,
+    backgroundColor: "#F0F7FF",
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#BBDEFB",
+  },
+  dropdownCascadaItem: {
+    height: 42,
+    backgroundColor: "#FFF",
+    borderColor: MJM_BLUE,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+  },
+  photoWrapper: { marginRight: 15, position: "relative" },
+  photoThumb: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  uploadingBadge: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(2, 72, 133, 0.78)",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 12,
+  },
+  removePhoto: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "white",
+    borderRadius: 12,
+    zIndex: 2,
+  },
+  btnSave: {
+    backgroundColor: "#28a745",
+    padding: 15,
+    borderRadius: 12,
+    marginTop: 20,
+    alignItems: "center",
+    width: "100%",
+  },
+  navContainer: {
+    flexDirection: "row",
+    padding: 15,
+    gap: 12,
+    backgroundColor: "white",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  navBtn: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#eee",
+  },
+  cascadaHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 5,
+  },
+  cascadaTitle: { fontSize: 11, fontWeight: "bold", color: MJM_BLUE },
+  btnAddUnit: { backgroundColor: MJM_BLUE, padding: 10, borderRadius: 10 },
   mosaicoGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -2604,211 +2876,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 2,
   },
-  mosaicoSelected: {
-    backgroundColor: MJM_BLUE,
-    borderColor: MJM_BLUE,
-  },
+  mosaicoSelected: { backgroundColor: MJM_BLUE, borderColor: MJM_BLUE },
   mosaicoText: {
     fontSize: 9,
     fontWeight: "bold",
     marginTop: 6,
     color: MJM_BLUE,
     textAlign: "center",
-  },
-  cascadaContainer: {
-    marginTop: 15,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: "#F9FBFF",
-    borderWidth: 1,
-    borderColor: "#E1E8F5",
-  },
-  cascadaHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 5,
-  },
-  cascadaTitle: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: MJM_BLUE,
-  },
-  cascadaGrid: {
-    flexDirection: "row",
-    gap: 6,
-    marginBottom: 10,
-  },
-  btnToggleModo: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: MJM_BLUE,
-  },
-  dropdown: {
-    height: 44,
-    borderBottomWidth: 1.5,
-    borderBottomColor: "#eee",
-    marginTop: 8,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: "#FFFFFF",
-  },
-  dropdownCascadaItem: {
-    height: 42,
-    backgroundColor: "#FFF",
-    borderColor: MJM_BLUE,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-  },
-  dropdownDisabled: {
-    backgroundColor: "#F5F5F5",
-    borderColor: "#CCC",
-  },
-  dropdownContainer: {
-    borderRadius: 12,
-    marginTop: 5,
-    elevation: 5,
-    backgroundColor: "white",
-  },
-  dropdownItemContainer: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: "#1e293b",
-    lineHeight: 20,
-  },
-  unitCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
-  },
-  unitCardIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#F0F5FF",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  unitCardPlaca: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: MJM_BLUE,
-  },
-  unitCardRemove: {
-    padding: 8,
-  },
-  listadoUnidadesContainer: {
-    marginTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
-    paddingTop: 15,
-  },
-  listadoHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  btnAddUnit: {
-    backgroundColor: MJM_BLUE,
-    padding: 10,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  navRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 15,
-    marginTop: 15,
-  },
-  btnBack: {
-    flex: 1,
-    height: 48,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: MJM_BLUE,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  btnNext: {
-    flex: 1,
-    height: 48,
-    backgroundColor: MJM_BLUE,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  btnDisabled: {
-    opacity: 0.4,
-  },
-  btnTime: {
-    backgroundColor: MJM_BLUE,
-    padding: 10,
-    borderRadius: 10,
-  },
-  pickerPressable: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-    backgroundColor: "#f4f4f4",
-    borderRadius: 10,
-    marginTop: 5,
-    borderWidth: 1,
-    borderColor: "#ccc",
-  },
-  photoActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 20,
-  },
-  btnCamAction: {
-    flex: 1,
-    backgroundColor: "#444",
-    padding: 12,
-    borderRadius: 12,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-  },
-  wrapperFoto: {
-    marginRight: 10,
-    position: "relative",
-  },
-  previewFoto: {
-    width: 70,
-    height: 70,
-    borderRadius: 8,
-  },
-  uploadingBadge: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(2, 72, 133, 0.78)",
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-  },
-  btnBorrarFoto: {
-    position: "absolute",
-    top: -5,
-    right: -5,
   },
   modalOverlay: {
     flex: 1,
@@ -2827,34 +2901,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
   },
-  modalPlacaBox: {
-    backgroundColor: "#FFFFFF",
-    width: "92%",
-    maxWidth: 480,
-    height: Math.min(500, Math.round(SCREEN_HEIGHT * 0.72)),
-    borderRadius: 16,
-    padding: 16,
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-  },
-  inputSearchStyle: {
-    height: 44,
-    fontSize: 14,
-    borderRadius: 8,
-    color: "#000",
-    paddingHorizontal: 10,
-    backgroundColor: "#F9F9F9",
-  },
-  modalInputText: {
-    width: "100%",
-    borderColor: "#CBD5E1",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    color: "#333",
-  },
   progressTitle: {
     fontSize: 16,
     fontWeight: "bold",
@@ -2868,14 +2914,19 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     overflow: "hidden",
   },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: MJM_BLUE,
-  },
+  progressBarFill: { height: "100%", backgroundColor: MJM_BLUE },
   progressPercentage: {
     marginTop: 10,
     fontSize: 12,
     color: "#666",
     fontWeight: "bold",
+  },
+  inputSearchStyle: {
+    height: 44,
+    fontSize: 14,
+    borderRadius: 8,
+    color: "#000",
+    paddingHorizontal: 10,
+    backgroundColor: "#F9F9F9",
   },
 });

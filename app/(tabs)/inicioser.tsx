@@ -1097,7 +1097,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
     <ThemedView
       style={[
         styles.main,
-        { paddingTop: insets.top, backgroundColor: "#f4f7f6" },
+        {  backgroundColor: "#f4f7f6" },
       ]}
     >
       {Platform.OS === "web" && (
@@ -1118,7 +1118,7 @@ const hayFotosSubiendo = fotos.some((f) => f.uploading);
       )}
 
       <View style={styles.stepperContainer}>
-        <ThemedText style={styles.sectionTitle}>
+        <ThemedText style={styles.stepperTitle}>
           INICIO DE SERVICIO:
         </ThemedText>
         {[1, 2, 3].map((i) => (
@@ -2640,11 +2640,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingBottom: 100,
   },
-  stepperContainer: {
+     stepperContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginVertical: 12,
-    gap: 12,
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 10,
+  },
+  stepperTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: MJM_BLUE,
   },
   circle: {
     width: 24,

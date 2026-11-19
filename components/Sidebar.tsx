@@ -1,3 +1,4 @@
+
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { DrawerContentScrollView } from "expo-router/drawer";
@@ -18,26 +19,31 @@ export const Sidebar = (props: any) => {
   const router = useRouter();
   const { width } = useWindowDimensions();
 
-  // ✅ Plataforma real (Web vs App Móvil) separada del tamaño de pantalla
- const isWeb = Platform.OS === "web";
+  // Plataforma y tamaño de pantalla
+  const isWeb = Platform.OS === "web";
   const isSmallScreen = width < 768;
   const esMovil = !isWeb || isSmallScreen;
 
   const activeRoute = props.state?.routes[props.state.index]?.name;
   const [openSection, setOpenSection] = useState<string | null>(null);
-  const userRolId = userData?.id_rol ? Number(userData.id_rol) : null;
+
+  // Normalizar el rol desde el inicio
+  const userRolId = Number(userData?.id_rol ?? 0);
 
   const { isExpanded } = props;
   const mostrarTexto = isExpanded || isSmallScreen;
 
   const handleToggleSection = useCallback((sectionLabel: string) => {
-    setOpenSection((prev) => (prev === sectionLabel ? null : sectionLabel));
+    setOpenSection((prev) =>
+      prev === sectionLabel ? null : sectionLabel
+    );
   }, []);
 
   const navigateTo = useCallback(
     (route: string) => {
       if (isSmallScreen && props.navigation?.closeDrawer) {
         props.navigation.closeDrawer();
+
         requestAnimationFrame(() => {
           router.push(`/${route}` as any);
         });
@@ -51,11 +57,11 @@ export const Sidebar = (props: any) => {
   const handleLogout = useCallback(async () => {
     if (
       Platform.OS === "web" &&
-      typeof window !== "undefined" &&
-      window.localStorage
+      typeof window !== "undefined"
     ) {
       window.localStorage.removeItem("prisma_catalogos_tele_v1");
     }
+
     await logout();
     router.replace("/");
   }, [logout, router]);
@@ -68,35 +74,48 @@ export const Sidebar = (props: any) => {
     );
   }
 
-const rol = userRolId as number;
-  const showMobileStats = rol === 1 || ((rol === 2 || rol === 3) && esMovil);
-  const showWebStats = (rol === 1 || rol === 3) && !esMovil;
+  // Permisos por rol y dispositivo
+  const showMobileStats =
+    userRolId === 1 ||
+    ((userRolId === 2 || userRolId === 3) && esMovil);
+
+  const showWebStats =
+    (userRolId === 1 || userRolId === 3) && !esMovil;
+
   const showOtros = showMobileStats || showWebStats;
 
   return (
     <View style={styles.container}>
-      <DrawerContentScrollView {...props} showsVerticalScrollIndicator={false}>
-        {/* Header */}
+      <DrawerContentScrollView
+        {...props}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* CABECERA */}
         {mostrarTexto && (
           <View style={styles.sidebarHeader}>
             <View style={styles.avatarLarge}>
               <Text style={styles.avatarLargeText}>
-                {userData?.nombres ? userData.nombres[0].toUpperCase() : "U"}
+                {userData?.nombres
+                  ? userData.nombres[0].toUpperCase()
+                  : "U"}
               </Text>
             </View>
+
             <View style={styles.userInfo}>
               <Text style={styles.userName}>
                 {userData?.nombres} {userData?.apellido_paterno}
               </Text>
-              <Text style={styles.userRole}>{userData?.rol || "Usuario"}</Text>
+              <Text style={styles.userRole}>
+                {userData?.rol || "Usuario"}
+              </Text>
             </View>
           </View>
         )}
 
         <View style={styles.divider} />
 
-       {/* ✅ MÓVIL (APK o Chrome en celular < 768px): Reg. Campo (/principal) */}
-        {(userRolId === 2 ||userRolId === 3 || userRolId === 1) && esMovil && (
+        {/* REGISTRO DE CAMPO - MÓVIL */}
+        {[1, 2, 3].includes(userRolId) && esMovil && (
           <MenuOption
             icon="home-outline"
             label="Reg. Campo"
@@ -106,8 +125,8 @@ const rol = userRolId as number;
           />
         )}
 
-        {/* ✅ PC / LAPTOP (>= 768px en Web): Reg. CECOM (/cecomdoceh) */}
-        {(userRolId === 3 || userRolId === 1 || userRolId === 2) && !esMovil && (
+        {/* REGISTRO CECOM - WEB */}
+        {[1, 2, 3].includes(userRolId) && !esMovil && (
           <MenuOption
             icon="home-outline"
             label="Reg. CECOM"
@@ -117,8 +136,8 @@ const rol = userRolId as number;
           />
         )}
 
-        {/* Collapsible: RANKING */}
-        {(showMobileStats || showWebStats) && (
+        {/* RANKING */}
+        {showOtros && (
           <CollapsibleSection
             icon="stats-chart-outline"
             label="RANKING"
@@ -136,6 +155,7 @@ const rol = userRolId as number;
                   onPress={() => navigateTo("rcampo")}
                   isSubItem
                 />
+
                 <MenuOption
                   icon="stats-chart-outline"
                   label="Est. MOTO"
@@ -160,7 +180,7 @@ const rol = userRolId as number;
           </CollapsibleSection>
         )}
 
-        {/* Collapsible: OTROS */}
+        {/* OTROS */}
         {showOtros && (
           <CollapsibleSection
             icon="compass-outline"
@@ -177,6 +197,7 @@ const rol = userRolId as number;
               onPress={() => navigateTo("mapa")}
               isSubItem
             />
+
             {userRolId === 1 && (
               <MenuOption
                 icon="pin-outline"
@@ -190,8 +211,8 @@ const rol = userRolId as number;
           </CollapsibleSection>
         )}
 
-        {/* Collapsible: MANTENIMIENTO */}
-        {(userRolId === 1) && (
+        {/* MANTENIMIENTO */}
+        {userRolId === 1 && (
           <CollapsibleSection
             label="MANTENIMIENTO"
             icon="settings-outline"
@@ -207,6 +228,7 @@ const rol = userRolId as number;
               onPress={() => navigateTo("usuario")}
               isSubItem
             />
+
             <MenuOption
               icon="shield-outline"
               label="PNP"
@@ -215,6 +237,7 @@ const rol = userRolId as number;
               onPress={() => navigateTo("crudpnp")}
               isSubItem
             />
+
             <MenuOption
               icon="car-outline"
               label="Unidades"
@@ -223,6 +246,7 @@ const rol = userRolId as number;
               onPress={() => navigateTo("crudunidades")}
               isSubItem
             />
+
             <MenuOption
               icon="git-branch-outline"
               label="Vía"
@@ -231,6 +255,7 @@ const rol = userRolId as number;
               onPress={() => navigateTo("crudvia")}
               isSubItem
             />
+
             <MenuOption
               icon="location-outline"
               label="Lugar"
@@ -239,7 +264,8 @@ const rol = userRolId as number;
               onPress={() => navigateTo("crudlugar")}
               isSubItem
             />
-            {userRolId === 1 && isWeb && (
+
+            {isWeb && (
               <>
                 <MenuOption
                   icon="business-outline"
@@ -249,6 +275,7 @@ const rol = userRolId as number;
                   onPress={() => navigateTo("departamento")}
                   isSubItem
                 />
+
                 <MenuOption
                   icon="map-outline"
                   label="Distrito"
@@ -262,6 +289,7 @@ const rol = userRolId as number;
           </CollapsibleSection>
         )}
 
+        {/* MATRIZ */}
         {userRolId === 1 && isWeb && (
           <CollapsibleSection
             label="MATRIZ"
@@ -270,8 +298,6 @@ const rol = userRolId as number;
             isOpen={openSection === "matriz"}
             onToggle={() => handleToggleSection("matriz")}
           >
-           
-          
             <MenuOption
               icon="radio-outline"
               label="Principal"
@@ -280,6 +306,7 @@ const rol = userRolId as number;
               onPress={() => navigateTo("principal")}
               isSubItem
             />
+
             <MenuOption
               icon="radio-outline"
               label="DASH 2 KILO"
@@ -291,6 +318,7 @@ const rol = userRolId as number;
           </CollapsibleSection>
         )}
 
+        {/* ESTADÍSTICA */}
         {(userRolId === 2 || userRolId === 1) && isWeb && (
           <CollapsibleSection
             label="ESTADÍSTICA"
@@ -310,6 +338,7 @@ const rol = userRolId as number;
           </CollapsibleSection>
         )}
 
+        {/* SIPCOP */}
         {(userRolId === 2 || userRolId === 1) && isWeb && (
           <CollapsibleSection
             label="SIPCOP"
@@ -318,8 +347,7 @@ const rol = userRolId as number;
             isOpen={openSection === "SIPCOP"}
             onToggle={() => handleToggleSection("SIPCOP")}
           >
-          
-           <MenuOption
+            <MenuOption
               icon="location-outline"
               label="Descarga"
               isActive={activeRoute === "cecom"}
@@ -327,6 +355,7 @@ const rol = userRolId as number;
               onPress={() => navigateTo("cecom")}
               isSubItem
             />
+
             <MenuOption
               icon="download-outline"
               label="Exportar"
@@ -335,6 +364,7 @@ const rol = userRolId as number;
               onPress={() => navigateTo("exportar")}
               isSubItem
             />
+
             <MenuOption
               icon="calendar-number-outline"
               label="Exportar Rango"
@@ -346,28 +376,29 @@ const rol = userRolId as number;
           </CollapsibleSection>
         )}
 
-   {/* DRONES - Acceso directo */}
-{(userRolId === 4 || userRolId === 1) && (
-  <MenuOption
-    icon="navigate-outline"
-    label="Drones"
-    isActive={activeRoute === "principalDron"}
-    isExpanded={mostrarTexto}
-    onPress={() => navigateTo("principalDron")}
-  />
-)}
+        {/* DRONES */}
+        {(userRolId === 4 || userRolId === 1) && (
+          <MenuOption
+            icon="navigate-outline"
+            label="Drones"
+            isActive={activeRoute === "principalDron"}
+            isExpanded={mostrarTexto}
+            onPress={() => navigateTo("principalDron")}
+          />
+        )}
 
-{/* MOVILIDAD URBANA - Acceso directo */}
-{(userRolId === 5 || userRolId === 1) && (
-  <MenuOption
-    icon="car-sport-outline"
-    label="Movilidad Urbana"
-    isActive={activeRoute === "principalmovilidad"}
-    isExpanded={mostrarTexto}
-    onPress={() => navigateTo("principalmovilidad")}
-  />
-)}
+        {/* MOVILIDAD URBANA */}
+        {(userRolId === 5 || userRolId === 1) && (
+          <MenuOption
+            icon="car-sport-outline"
+            label="Movilidad Urbana"
+            isActive={activeRoute === "principalmovilidad"}
+            isExpanded={mostrarTexto}
+            onPress={() => navigateTo("principalmovilidad")}
+          />
+        )}
 
+        {/* SECCIONES ADMINISTRATIVAS */}
         {userRolId === 1 && isWeb && (
           <>
             <CollapsibleSection
@@ -385,6 +416,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("roles")}
                 isSubItem
               />
+
               <MenuOption
                 icon="key-outline"
                 label="Permisos"
@@ -410,6 +442,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("oc")}
                 isSubItem
               />
+
               <MenuOption
                 icon="pie-chart-outline"
                 label="Dashboard"
@@ -435,6 +468,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("persona")}
                 isSubItem
               />
+
               <MenuOption
                 icon="business-outline"
                 label="Unidades"
@@ -443,6 +477,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("ocurrencias")}
                 isSubItem
               />
+
               <MenuOption
                 icon="git-network-outline"
                 label="Puntos"
@@ -451,11 +486,12 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("puntost")}
                 isSubItem
               />
+
               <MenuOption
                 icon="layers-outline"
                 label="Grupos"
-                isExpanded={true}
                 isActive={activeRoute === "grupos"}
+                isExpanded={true}
                 onPress={() => navigateTo("grupos")}
                 isSubItem
               />
@@ -476,6 +512,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("jv")}
                 isSubItem
               />
+
               <MenuOption
                 icon="calendar-outline"
                 label="PNP"
@@ -484,6 +521,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("pnp")}
                 isSubItem
               />
+
               <MenuOption
                 icon="walk-outline"
                 label="Registro OC"
@@ -492,6 +530,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("ocregistro")}
                 isSubItem
               />
+
               <MenuOption
                 icon="document-text-outline"
                 label="Licencias"
@@ -517,6 +556,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("ocurrencias")}
                 isSubItem
               />
+
               <MenuOption
                 icon="images-outline"
                 label="Galería"
@@ -525,6 +565,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("galeria")}
                 isSubItem
               />
+
               <MenuOption
                 icon="pricetags-outline"
                 label="Categorías"
@@ -533,6 +574,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("categorias_incidentes")}
                 isSubItem
               />
+
               <MenuOption
                 icon="map-outline"
                 label="Detalle Operativo"
@@ -558,6 +600,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("mapa")}
                 isSubItem
               />
+
               <MenuOption
                 icon="navigate-circle-outline"
                 label="Puntos operativos"
@@ -566,6 +609,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("puntos")}
                 isSubItem
               />
+
               <MenuOption
                 icon="navigate-circle-outline"
                 label="Puntos operativos (Campo)"
@@ -591,6 +635,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("jurisdiccion_serenazgo")}
                 isSubItem
               />
+
               <MenuOption
                 icon="ribbon-outline"
                 label="Jurisdicción PNP"
@@ -616,6 +661,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("via")}
                 isSubItem
               />
+
               <MenuOption
                 icon="location-outline"
                 label="Lugar"
@@ -641,6 +687,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("cuaderno")}
                 isSubItem
               />
+
               <MenuOption
                 icon="locate-outline"
                 label="Táctico Priorizado"
@@ -649,6 +696,7 @@ const rol = userRolId as number;
                 onPress={() => navigateTo("tactp")}
                 isSubItem
               />
+
               <MenuOption
                 icon="school-outline"
                 label="Escuela Segura"
@@ -661,12 +709,22 @@ const rol = userRolId as number;
           </>
         )}
 
-        {/* --- BOTÓN CERRAR SESIÓN --- */}
-        <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+        {/* CERRAR SESIÓN */}
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={handleLogout}
+        >
           <View style={styles.iconBox}>
-            <Ionicons name="log-out-outline" size={20} color="white" />
+            <Ionicons
+              name="log-out-outline"
+              size={20}
+              color="white"
+            />
           </View>
-          {mostrarTexto && <Text style={styles.menuText}>Cerrar Sesión</Text>}
+
+          {mostrarTexto && (
+            <Text style={styles.menuText}>Cerrar Sesión</Text>
+          )}
         </TouchableOpacity>
       </DrawerContentScrollView>
     </View>
@@ -690,9 +748,15 @@ const MenuOption = memo(
         onPress={onPress}
       >
         {isActive && <View style={styles.glowBar} />}
+
         <View style={styles.iconBox}>
-          <Ionicons name={validIcon as any} size={20} color="white" />
+          <Ionicons
+            name={validIcon as any}
+            size={20}
+            color="white"
+          />
         </View>
+
         {isExpanded && (
           <Text style={[styles.menuText, isActive && styles.activeTextGlow]}>
             {label}
@@ -712,7 +776,10 @@ const CollapsibleSection = memo(
 
     return (
       <View style={styles.sectionContainer}>
-        <TouchableOpacity onPress={onToggle} style={styles.sectionHeader}>
+        <TouchableOpacity
+          onPress={onToggle}
+          style={styles.sectionHeader}
+        >
           <View style={styles.iconBox}>
             <Ionicons
               name={validIcon as any}
@@ -720,13 +787,18 @@ const CollapsibleSection = memo(
               color="rgba(255,255,255,0.75)"
             />
           </View>
+
           {isExpanded && (
             <>
               <Text
-                style={[styles.sectionHeaderText, { flex: 1, marginLeft: 5 }]}
+                style={[
+                  styles.sectionHeaderText,
+                  { flex: 1, marginLeft: 5 },
+                ]}
               >
                 {label}
               </Text>
+
               <Ionicons
                 name={isOpen ? "chevron-up" : "chevron-down"}
                 size={14}
@@ -735,6 +807,7 @@ const CollapsibleSection = memo(
             </>
           )}
         </TouchableOpacity>
+
         {isOpen && <View>{children}</View>}
       </View>
     );
@@ -742,8 +815,14 @@ const CollapsibleSection = memo(
 );
 
 const styles = StyleSheet.create({
-  loadingContainer: { justifyContent: "center", alignItems: "center" },
-  container: { flex: 1, backgroundColor: "#004481" },
+  loadingContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "#004481",
+  },
   sidebarHeader: {
     padding: 20,
     paddingTop: 30,
@@ -761,10 +840,24 @@ const styles = StyleSheet.create({
   subMenuItem: {
     paddingLeft: 36,
   },
-  avatarLargeText: { color: "#fff", fontSize: 20, fontWeight: "bold" },
-  userInfo: { marginLeft: 15, flex: 1 },
-  userName: { color: "#fff", fontSize: 14, fontWeight: "bold" },
-  userRole: { color: "#75aaf0", fontSize: 11 },
+  avatarLargeText: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  userInfo: {
+    marginLeft: 15,
+    flex: 1,
+  },
+  userName: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  userRole: {
+    color: "#75aaf0",
+    fontSize: 11,
+  },
   divider: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.1)",
@@ -779,10 +872,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     position: "relative",
   },
-  iconBox: { width: 40, alignItems: "center" },
-  menuText: { color: "#fff", fontSize: 14, marginLeft: 5 },
-  activeBackground: { backgroundColor: "rgba(255,255,255,0.1)" },
-  activeTextGlow: { fontWeight: "bold", color: "#fff" },
+  iconBox: {
+    width: 40,
+    alignItems: "center",
+  },
+  menuText: {
+    color: "#fff",
+    fontSize: 14,
+    marginLeft: 5,
+  },
+  activeBackground: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  activeTextGlow: {
+    fontWeight: "bold",
+    color: "#fff",
+  },
   glowBar: {
     position: "absolute",
     left: 0,
@@ -792,7 +897,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 4,
     borderBottomRightRadius: 4,
   },
-  sectionContainer: { marginVertical: 2 },
+  sectionContainer: {
+    marginVertical: 2,
+  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",

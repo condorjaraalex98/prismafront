@@ -826,7 +826,7 @@ const seleccionarGaleria = async () => {
       style={[
         styles.main,
         {
-          paddingTop: insets.top,
+          
           backgroundColor: isDark ? "#ffffff" : "#f4f7f6",
         },
       ]}
@@ -2072,11 +2072,17 @@ const styles = StyleSheet.create({
     padding: 8,
   },
 
-  stepperContainer: {
+     stepperContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginVertical: 12,
-    gap: 12,
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 10,
+  },
+  stepperTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: MJM_BLUE,
   },
 
   circle: {

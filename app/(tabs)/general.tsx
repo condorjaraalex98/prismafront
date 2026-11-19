@@ -1019,7 +1019,7 @@ export default function RegistroOcurrencia() {
     <ThemedView
       style={[
         styles.main,
-        { paddingTop: insets.top, backgroundColor: "#f4f7f6" },
+        {  backgroundColor: "#f4f7f6" },
       ]}
     >
       {Platform.OS === "web" && (
@@ -2511,11 +2511,17 @@ const styles = StyleSheet.create({
   unitCardRemove: {
     padding: 8,
   },
-  stepperContainer: {
+     stepperContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginVertical: 12,
-    gap: 12,
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 10,
+  },
+  stepperTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: MJM_BLUE,
   },
   circle: {
     width: 24,

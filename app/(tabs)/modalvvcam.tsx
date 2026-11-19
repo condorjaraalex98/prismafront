@@ -1997,7 +1997,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.45)",
     justifyContent: "center",
     alignItems: "flex-end", // Mantiene el anclaje a la derecha
-    paddingRight: 280,      // <--- Aumenta este número para mover el modal más a la izquierda (antes 200)
+    paddingRight: 150,      // <--- Aumenta este número para mover el modal más a la izquierda (antes 200)
     padding: Platform.OS === "web" ? 20 : 10,
   },
   modalContent: {

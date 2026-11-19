@@ -996,13 +996,13 @@ export default function RegistroOcurrencia() {
       style={[
         styles.main,
         {
-          paddingTop: insets.top,
+          
           backgroundColor: "#f4f7f6",
         },
       ]}
     >
       <View style={styles.stepperContainer}>
-        <ThemedText style={styles.sectionTitle}>ESCUELA SEGURA:</ThemedText>
+        <ThemedText style={styles.stepperTitle}>ESCUELA SEGURA:</ThemedText>
         {[1, 2, 3, 4].map((i) => (
           <View
             key={i}
@@ -2112,11 +2112,17 @@ const styles = StyleSheet.create({
   unitCardRemove: {
     padding: 8,
   },
-  stepperContainer: {
+     stepperContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginVertical: 12,
-    gap: 12,
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 10,
+  },
+  stepperTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: MJM_BLUE,
   },
   circle: {
     width: 24,

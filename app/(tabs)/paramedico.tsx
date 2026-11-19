@@ -42,6 +42,15 @@ type FotoEstado = {
   uploading: boolean;
 };
 
+type PacienteForm = {
+  sexo: "" | "M" | "F";
+  nombres: string;
+  dni: string;
+  tipo_edad: "" | "M" | "m";
+  edad: string;
+  placa_victima: string;
+};
+
 const MJM_BLUE = "#024885";
 const ID_MOTOCICLETA = 2; // Solo Motos
 const ID_PATRULLAJE_MOTORIZADO = 3;
@@ -121,7 +130,7 @@ export default function RegistroParamedico() {
       unidad_encargada: "SERENAZGO",
       fecha_evento: getHoy(),
       grupo: null as any,
-      victimas: [] as any[],
+      victimas: [] as PacienteForm[],
       datos_importantes: {
         por_orden_central: false,
         control_fv_sv: false,
@@ -180,6 +189,8 @@ export default function RegistroParamedico() {
   const isMountedRef = useRef(true);
   const submittingRef = useRef(false);
   const activeUploadControllersRef = useRef<Set<AbortController>>(new Set());
+  const viasControllerRef = useRef<AbortController | null>(null);
+  const cuadrasControllerRef = useRef<AbortController | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webCameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -200,6 +211,8 @@ export default function RegistroParamedico() {
     return () => {
       isMountedRef.current = false;
       limpiarTimers();
+      viasControllerRef.current?.abort();
+      cuadrasControllerRef.current?.abort();
       activeUploadControllersRef.current.forEach((c) => c.abort());
       activeUploadControllersRef.current.clear();
       fotosRef.current.forEach((f) => liberarUriPreview(f.uri));
@@ -332,7 +345,6 @@ export default function RegistroParamedico() {
     const timer = setTimeout(() => controller.abort(), 15000);
 
     try {
-      // Pedimos sólo lo necesario (motos ID 2)
       const [resGral, resMotos] = await Promise.all([
         fetch(
           `${API_URL}/catalogos/completo/unificadov?tipoLugar=4&idTipoP=6&idTipoP=3`,
@@ -342,6 +354,10 @@ export default function RegistroParamedico() {
           signal: controller.signal,
         }),
       ]);
+
+      if (!resGral.ok || !resMotos.ok) {
+        throw new Error("Error HTTP al cargar catálogos");
+      }
 
       const [data, motosData] = await Promise.all([
         resGral.json(),
@@ -353,7 +369,7 @@ export default function RegistroParamedico() {
       setCatalogos((prev) => ({
         ...prev,
         tipos_patrullaje: data.tipos_patrullaje || [],
-        unidades: motosData || [],
+        unidades: Array.isArray(motosData) ? motosData : [],
         lugares: data.lugares || [],
       }));
       setTiposVia(data.tipos_via || []);
@@ -384,7 +400,6 @@ export default function RegistroParamedico() {
     }
   }, [cargarCatalogosInit, obtenerGpsAutomatico]);
 
-  // Pre-indexado para evitar lag en dispositivos Android de gama baja
   const labelNormMap = useMemo(() => {
     const map = new Map<string, string>();
     const indexar = (lista: any[]) => {
@@ -422,7 +437,6 @@ export default function RegistroParamedico() {
     );
   }, [catalogos.unidades, busquedaPlaca, filtroOptimizado]);
 
-  // Validación de avance
   const pasoActualValido = useMemo(() => {
     if (step === 1) {
       const hasBasics =
@@ -473,7 +487,7 @@ export default function RegistroParamedico() {
     }
 
     if (step === 4) {
-      return form.descripcion.trim().length > 3;
+      return (form.descripcion || "").trim().length > 3;
     }
 
     return false;
@@ -490,7 +504,6 @@ export default function RegistroParamedico() {
     form.hora_repliegue,
     form.fecha_evento,
     form.id_lugar,
-    form.referencia,
     form.descripcion,
     modoBusquedaManual,
     cuadras.length,
@@ -537,7 +550,7 @@ export default function RegistroParamedico() {
 
     setForm((f) => ({
       ...f,
-      id_modalidad_patrullaje: "2", // Municipal moto
+      id_modalidad_patrullaje: "2",
       vehiculos_detalle: [
         ...f.vehiculos_detalle,
         {
@@ -562,26 +575,50 @@ export default function RegistroParamedico() {
   const handleTipoViaChange = async (idTipo: any) => {
     setSelTipoVia(idTipo);
     setSelVia(null);
+    setVias([]);
     setCuadras([]);
     setForm((f) => ({ ...f, id_lugar: null }));
+
+    viasControllerRef.current?.abort();
+    const controller = new AbortController();
+    viasControllerRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), 12000);
+
     try {
-      const res = await fetch(`${API_URL}/catalogos/vias/${idTipo}`);
+      const res = await fetch(`${API_URL}/catalogos/vias/${idTipo}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (isMountedRef.current) setVias(data || []);
-    } catch (err) {
-      console.error(err);
+      if (isMountedRef.current) setVias(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") console.error(err);
+    } finally {
+      clearTimeout(timer);
     }
   };
 
   const handleViaChange = async (idVia: any) => {
     setSelVia(idVia);
+    setCuadras([]);
     setForm((f) => ({ ...f, id_lugar: null }));
+
+    cuadrasControllerRef.current?.abort();
+    const controller = new AbortController();
+    cuadrasControllerRef.current = controller;
+    const timer = setTimeout(() => controller.abort(), 12000);
+
     try {
-      const res = await fetch(`${API_URL}/catalogos/cuadras/${idVia}`);
+      const res = await fetch(`${API_URL}/catalogos/cuadras/${idVia}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (isMountedRef.current) setCuadras(data || []);
-    } catch (err) {
-      console.error(err);
+      if (isMountedRef.current) setCuadras(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") console.error(err);
+    } finally {
+      clearTimeout(timer);
     }
   };
 
@@ -866,16 +903,16 @@ export default function RegistroParamedico() {
         const nombreLimpio = (v.nombres || "").trim();
         const dniLimpio = (v.dni || "").trim();
 
-        let nombreFinal = nombreLimpio;
-        if (dniLimpio !== "") {
-          nombreFinal =
-            nombreLimpio !== ""
-              ? `${nombreLimpio} DNI: ${dniLimpio}`
-              : `DNI: ${dniLimpio}`;
-        }
+        const partes: string[] = [];
+        if (nombreLimpio) partes.push(nombreLimpio);
+        if (dniLimpio) partes.push(`DNI: ${dniLimpio}`);
+        if (v.sexo === "M") partes.push("M");
+        else if (v.sexo === "F") partes.push("F");
+        if (v.tipo_edad === "M") partes.push("May");
+        else if (v.tipo_edad === "m") partes.push("Men");
 
         return {
-          nombre_victima: nombreFinal.toUpperCase(),
+          nombre_victima: partes.join(" | ").toUpperCase() || null,
           edad: v.edad || null,
           placa_victima: (v.placa_victima || "").toUpperCase(),
           id_relacion_v: 2,
@@ -952,7 +989,22 @@ export default function RegistroParamedico() {
       {data.map((item: any) => (
         <Pressable
           key={item.value}
-          onPress={() => setForm((prev) => ({ ...prev, [field]: item.value }))}
+          onPress={() =>
+            setForm((prev) => {
+              if (
+                field === "id_tipo_patrullaje" &&
+                Number(item.value) !== ID_PATRULLAJE_MOTORIZADO
+              ) {
+                return {
+                  ...prev,
+                  [field]: item.value,
+                  vehiculos_detalle: [],
+                  id_modalidad_patrullaje: "1",
+                };
+              }
+              return { ...prev, [field]: item.value };
+            })
+          }
           style={[
             styles.mosaicoItem,
             currentId === item.value && styles.mosaicoSelected,
@@ -977,12 +1029,7 @@ export default function RegistroParamedico() {
   );
 
   return (
-    <ThemedView
-      style={[
-        styles.main,
-        { paddingTop: insets.top, backgroundColor: "#f4f7f6" },
-      ]}
-    >
+    <ThemedView style={[styles.main, { backgroundColor: "#f4f7f6" }]}>
       {Platform.OS === "web" && (
         <input
           ref={webCameraInputRef}
@@ -1000,8 +1047,9 @@ export default function RegistroParamedico() {
         />
       )}
 
+      {/* Cabecera compacta sin paddingTop duplicado */}
       <View style={styles.stepperContainer}>
-        <ThemedText style={styles.sectionTitle}>PARAMÉDICO: </ThemedText>
+        <ThemedText style={styles.stepperTitle}>PARAMÉDICO:</ThemedText>
         {[1, 2, 3, 4].map((i) => (
           <View
             key={i}
@@ -1074,7 +1122,9 @@ export default function RegistroParamedico() {
               "time-outline"
             )}
 
-            <ThemedText style={styles.label}>TIPO DE PATRULLAJE (Mot. Param. si corresponde)</ThemedText>
+            <ThemedText style={styles.label}>
+              TIPO DE PATRULLAJE (Mot. Param. si corresponde)
+            </ThemedText>
             {renderMosaicos(
               catalogos.tipos_patrullaje,
               form.id_tipo_patrullaje,
@@ -1148,7 +1198,7 @@ export default function RegistroParamedico() {
                     </View>
 
                     {form.vehiculos_detalle.map((v, index) => (
-                      <View key={index} style={styles.unitCard}>
+                      <View key={v.id_unidad ?? index} style={styles.unitCard}>
                         <View style={styles.unitCardIcon}>
                           <Ionicons name="bicycle" size={20} color={MJM_BLUE} />
                         </View>
@@ -1169,6 +1219,7 @@ export default function RegistroParamedico() {
                             );
                             setForm((prev) => ({
                               ...prev,
+                              id_modalidad_patrullaje: "1",
                               vehiculos_detalle: nuevos,
                             }));
                           }}
@@ -1227,7 +1278,7 @@ export default function RegistroParamedico() {
             {Platform.OS === "web" ? (
               <input
                 type="date"
-                value={form.fecha_evento}
+                value={form.fecha_evento ?? ""}
                 max={getHoy()}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -1302,13 +1353,14 @@ export default function RegistroParamedico() {
                     {Platform.OS === "web" ? (
                       <input
                         type="time"
-                        value={form[k]}
+                        value={form[k] ?? ""}
                         onChange={(e) => {
                           const val = e.target.value;
                           setForm((prev) => ({ ...prev, [k]: val }));
                         }}
                         style={{
                           flex: 1,
+                          minWidth: 0,
                           height: 45,
                           borderWidth: 1,
                           borderStyle: "solid",
@@ -1498,10 +1550,12 @@ export default function RegistroParamedico() {
                   <ThemedText style={styles.labelSubCascada}>TIPO</ThemedText>
                   <Dropdown
                     containerStyle={styles.dropdownContainer}
+                    itemTextStyle={styles.dropdownItemText}
                     style={styles.dropdownCascadaItem}
-                   data={(tiposVia || []).filter(
-  (item: any) => Number(item.value) !== 11 && Number(item.value) !== 13
-)}
+                    data={(tiposVia || []).filter(
+                      (item: any) =>
+                        Number(item.value) !== 11 && Number(item.value) !== 13
+                    )}
                     labelField="label"
                     valueField="value"
                     placeholder="Tipo"
@@ -1529,6 +1583,7 @@ export default function RegistroParamedico() {
                   </ThemedText>
                   <Dropdown
                     containerStyle={styles.dropdownContainer}
+                    itemTextStyle={styles.dropdownItemText}
                     style={[
                       styles.dropdownCascadaItem,
                       !selTipoVia && styles.dropdownDisabled,
@@ -1566,6 +1621,7 @@ export default function RegistroParamedico() {
                     <ThemedText style={styles.labelSubCascada}>CDRA</ThemedText>
                     <Dropdown
                       containerStyle={styles.dropdownContainer}
+                      itemTextStyle={styles.dropdownItemText}
                       style={[
                         styles.dropdownCascadaItem,
                         !selVia && styles.dropdownDisabled,
@@ -1620,13 +1676,15 @@ export default function RegistroParamedico() {
                   styles.textAreaSmall,
                   {
                     borderColor:
-                      form.referencia.trim().length >= 3 ? MJM_BLUE : "#DDD",
+                      (form.referencia || "").trim().length >= 3
+                        ? MJM_BLUE
+                        : "#DDD",
                   },
                 ]}
                 placeholder="Ej: Escriba una referencia cercana o indique el numeral exacto si lo conoce."
                 placeholderTextColor="#AAA"
                 maxLength={300}
-                value={form.referencia}
+                value={form.referencia ?? ""}
                 onChangeText={(t) =>
                   setForm((prev) => ({ ...prev, referencia: t }))
                 }
@@ -1806,7 +1864,7 @@ export default function RegistroParamedico() {
               </Pressable>
             </View>
 
-            {/* VÍCTIMAS */}
+            {/* PACIENTES (2 FILAS ANTI-DESBORDE CON MOSAICOS M/F Y M/m) */}
             <View
               style={{
                 marginTop: 5,
@@ -1836,15 +1894,22 @@ export default function RegistroParamedico() {
                         ...prev,
                         victimas: [
                           ...(prev.victimas || []),
-                          { nombres: "", dni: "", edad: "", placa_victima: "" },
+                          {
+                            sexo: "",
+                            nombres: "",
+                            dni: "",
+                            tipo_edad: "",
+                            edad: "",
+                            placa_victima: "",
+                          },
                         ],
                       }))
                     }
                     style={{
                       backgroundColor: MJM_BLUE,
-                      paddingVertical: 4,
-                      paddingHorizontal: 8,
-                      borderRadius: 4,
+                      paddingVertical: 5,
+                      paddingHorizontal: 10,
+                      borderRadius: 6,
                     }}
                   >
                     <ThemedText
@@ -1857,34 +1922,49 @@ export default function RegistroParamedico() {
               </View>
 
               {(form.victimas || []).map((vic, index) => (
-                <View
-                  key={`vic-${index}`}
-                  style={{
-                    backgroundColor: "#f8fafc",
-                    borderWidth: 1,
-                    borderColor: "#cbd5e1",
-                    borderRadius: 6,
-                    padding: 6,
-                    marginBottom: 6,
-                  }}
-                >
-                  <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
+                <View key={`vic-${index}`} style={styles.pacienteCard}>
+                  {/* FILA 1: Sexo (M/F) + Nombres + Eliminar */}
+                  <View style={styles.pacienteRow}>
+                    <View style={styles.miniMosaicGroup}>
+                      {(["M", "F"] as const).map((sx) => {
+                        const activo = vic.sexo === sx;
+                        return (
+                          <Pressable
+                            key={sx}
+                            onPress={() =>
+                              setForm((prev) => {
+                                const nuevas = [...prev.victimas];
+                                nuevas[index] = {
+                                  ...nuevas[index],
+                                  sexo: activo ? "" : sx,
+                                };
+                                return { ...prev, victimas: nuevas };
+                              })
+                            }
+                            style={[
+                              styles.miniMosaicBtn,
+                              activo && styles.miniMosaicBtnActive,
+                            ]}
+                          >
+                            <ThemedText
+                              style={[
+                                styles.miniMosaicText,
+                                activo && { color: "#FFF" },
+                              ]}
+                            >
+                              {sx}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
                     <TextInput
-                      style={{
-                        flex: 2,
-                        borderWidth: 1,
-                        borderColor: "#cbd5e1",
-                        borderRadius: 4,
-                        paddingVertical: 5,
-                        paddingHorizontal: 6,
-                        fontSize: 10,
-                        backgroundColor: "#FFF",
-                        color: "#000",
-                      }}
-                      placeholder="NOMBRES"
+                      style={[styles.pacienteInput, { flex: 1 }]}
+                      placeholder="NOMBRES Y APELLIDOS"
                       placeholderTextColor="#999"
                       maxLength={80}
-                      value={vic.nombres}
+                      value={vic.nombres ?? ""}
                       onChangeText={(t) =>
                         setForm((prev) => {
                           const nuevas = [...prev.victimas];
@@ -1893,23 +1973,37 @@ export default function RegistroParamedico() {
                         })
                       }
                     />
+
+                    <Pressable
+                      onPress={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          victimas: prev.victimas.filter((_, i) => i !== index),
+                        }))
+                      }
+                      style={styles.pacienteDeleteBtn}
+                    >
+                      <ThemedText
+                        style={{
+                          color: "#dc2626",
+                          fontWeight: "bold",
+                          fontSize: 12,
+                        }}
+                      >
+                        ✕
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+
+                  {/* FILA 2: DNI + Mayor/menor (M/m) + Edad + Placa */}
+                  <View style={[styles.pacienteRow, { marginTop: 6 }]}>
                     <TextInput
-                      style={{
-                        flex: 1.2,
-                        borderWidth: 1,
-                        borderColor: "#cbd5e1",
-                        borderRadius: 4,
-                        paddingVertical: 5,
-                        paddingHorizontal: 6,
-                        fontSize: 10,
-                        backgroundColor: "#FFF",
-                        color: "#000",
-                      }}
+                      style={[styles.pacienteInput, { flex: 1.2 }]}
                       placeholder="DNI"
                       placeholderTextColor="#999"
                       keyboardType="numeric"
                       maxLength={12}
-                      value={vic.dni}
+                      value={vic.dni ?? ""}
                       onChangeText={(t) => {
                         const val = t.replace(/\D/g, "");
                         setForm((prev) => {
@@ -1919,23 +2013,51 @@ export default function RegistroParamedico() {
                         });
                       }}
                     />
+
+                    <View style={styles.miniMosaicGroup}>
+                      {(["M", "m"] as const).map((te) => {
+                        const activo = vic.tipo_edad === te;
+                        return (
+                          <Pressable
+                            key={te}
+                            onPress={() =>
+                              setForm((prev) => {
+                                const nuevas = [...prev.victimas];
+                                nuevas[index] = {
+                                  ...nuevas[index],
+                                  tipo_edad: activo ? "" : te,
+                                };
+                                return { ...prev, victimas: nuevas };
+                              })
+                            }
+                            style={[
+                              styles.miniMosaicBtn,
+                              activo && styles.miniMosaicBtnActive,
+                            ]}
+                          >
+                            <ThemedText
+                              style={[
+                                styles.miniMosaicText,
+                                activo && { color: "#FFF" },
+                              ]}
+                            >
+                              {te}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
                     <TextInput
-                      style={{
-                        flex: 0.7,
-                        borderWidth: 1,
-                        borderColor: "#cbd5e1",
-                        borderRadius: 4,
-                        paddingVertical: 5,
-                        paddingHorizontal: 6,
-                        fontSize: 10,
-                        backgroundColor: "#FFF",
-                        color: "#000",
-                      }}
+                      style={[
+                        styles.pacienteInput,
+                        { flex: 0.7, textAlign: "center" },
+                      ]}
                       placeholder="EDAD"
                       placeholderTextColor="#999"
                       keyboardType="numeric"
                       maxLength={3}
-                      value={vic.edad}
+                      value={vic.edad ?? ""}
                       onChangeText={(t) => {
                         const val = t.replace(/\D/g, "");
                         setForm((prev) => {
@@ -1945,22 +2067,13 @@ export default function RegistroParamedico() {
                         });
                       }}
                     />
+
                     <TextInput
-                      style={{
-                        flex: 1,
-                        borderWidth: 1,
-                        borderColor: "#cbd5e1",
-                        borderRadius: 4,
-                        paddingVertical: 5,
-                        paddingHorizontal: 6,
-                        fontSize: 10,
-                        backgroundColor: "#FFF",
-                        color: "#000",
-                      }}
+                      style={[styles.pacienteInput, { flex: 1 }]}
                       placeholder="PLACA"
                       placeholderTextColor="#999"
                       maxLength={10}
-                      value={vic.placa_victima}
+                      value={vic.placa_victima ?? ""}
                       onChangeText={(t) =>
                         setForm((prev) => {
                           const nuevas = [...prev.victimas];
@@ -1972,29 +2085,11 @@ export default function RegistroParamedico() {
                         })
                       }
                     />
-                    <Pressable
-                      onPress={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          victimas: prev.victimas.filter((_, i) => i !== index),
-                        }))
-                      }
-                      style={{
-                        width: 26,
-                        height: 28,
-                        backgroundColor: "#fee2e2",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        borderRadius: 4,
-                      }}
-                    >
-                      <ThemedText
-                        style={{ color: "#dc2626", fontWeight: "bold", fontSize: 11 }}
-                      >
-                        ✕
-                      </ThemedText>
-                    </Pressable>
                   </View>
+
+                  <ThemedText style={styles.pacienteHint}>
+                    Sexo: M (Masc) / F (Fem)  •  Edad: M (Mayor) / m (menor)
+                  </ThemedText>
                 </View>
               ))}
             </View>
@@ -2036,7 +2131,7 @@ export default function RegistroParamedico() {
                   multiline={true}
                   maxLength={1500}
                   scrollEnabled={true}
-                  value={form.descripcion}
+                  value={form.descripcion ?? ""}
                   onChangeText={(t) => {
                     const textoCapitalizado =
                       t.length > 0 ? t.charAt(0).toUpperCase() + t.slice(1) : t;
@@ -2118,7 +2213,9 @@ export default function RegistroParamedico() {
                       style={styles.removePhoto}
                       onPress={() => {
                         liberarUriPreview(f.uri);
-                        setFotos((prev) => prev.filter((item) => item.id !== f.id));
+                        setFotos((prev) =>
+                          prev.filter((item) => item.id !== f.id)
+                        );
                       }}
                     >
                       <Ionicons name="close-circle" size={22} color="red" />
@@ -2134,7 +2231,9 @@ export default function RegistroParamedico() {
                 {
                   marginTop: 15,
                   backgroundColor:
-                    pasoActualValido && !hayFotosSubiendo ? "#28a745" : "#A0A0A0",
+                    pasoActualValido && !hayFotosSubiendo
+                      ? "#28a745"
+                      : "#A0A0A0",
                   opacity: pasoActualValido && !hayFotosSubiendo ? 1 : 0.6,
                 },
               ]}
@@ -2303,7 +2402,7 @@ export default function RegistroParamedico() {
           />
         ))}
 
-      {/* MODAL AMPLIO Y VIRTUALIZADO PARA SELECCIÓN DE PLACA DE MOTO */}
+      {/* MODAL SELECCIÓN DE PLACA DE MOTO */}
       <Modal
         visible={modalPlacaVisible}
         transparent
@@ -2345,7 +2444,7 @@ export default function RegistroParamedico() {
               ]}
               placeholder="Buscar placa o N° moto..."
               placeholderTextColor="#999"
-              value={busquedaPlaca}
+              value={busquedaPlaca ?? ""}
               onChangeText={setBusquedaPlaca}
               autoCapitalize="characters"
             />
@@ -2498,12 +2597,19 @@ const styles = StyleSheet.create({
   unitCardRemove: {
     padding: 8,
   },
-  stepperContainer: {
+    stepperContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginVertical: 12,
-    gap: 12,
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 10,
   },
+  stepperTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: MJM_BLUE,
+  },
+ 
   circle: {
     width: 24,
     height: 24,
@@ -2577,6 +2683,69 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOpacity: 0.25,
     shadowRadius: 8,
+  },
+  pacienteCard: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
+  },
+  pacienteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    width: "100%",
+  },
+  pacienteInput: {
+    minWidth: 0,
+    height: 32,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    fontSize: 11,
+    backgroundColor: "#FFF",
+    color: "#000",
+  },
+  miniMosaicGroup: {
+    flexDirection: "row",
+    gap: 3,
+    flexShrink: 0,
+  },
+  miniMosaicBtn: {
+    width: 26,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: MJM_BLUE,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  miniMosaicBtnActive: {
+    backgroundColor: MJM_BLUE,
+  },
+  miniMosaicText: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: MJM_BLUE,
+  },
+  pacienteDeleteBtn: {
+    width: 28,
+    height: 32,
+    flexShrink: 0,
+    backgroundColor: "#fee2e2",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 6,
+  },
+  pacienteHint: {
+    fontSize: 9,
+    color: "#64748b",
+    marginTop: 4,
   },
   textArea: {
     borderWidth: 1.5,

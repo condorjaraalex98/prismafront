@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Pris",
+    "name": "Prisma Ops",
     "slug": "Pris",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/icono.png",
     "scheme": "pris",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
@@ -15,21 +15,29 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.Pris"
+      "bundleIdentifier": "com.condorj.prismaops",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Permitir el reconocimiento de voz para transcribir los detalles.",
+        "NSMicrophoneUsageDescription": "Permitir que la aplicación acceda al micrófono para dictar los reportes."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/icono.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.Pris"
+      "package": "com.condorj.prismaops",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      
+      ]
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/iconoweb.png"
     },
     "plugins": [
       "expo-router",
@@ -49,6 +57,22 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "54ce9b61-72e9-472f-9e28-0db783a39614"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/54ce9b61-72e9-472f-9e28-0db783a39614"
     }
   }
 }

@@ -130,7 +130,7 @@ export default function PrincipalScreen() {
   };
 
   return (
-    <ThemedView style={[styles.main, { paddingTop: insets.top + 15 }]}>
+<ThemedView style={[styles.main, { paddingTop: 15 }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -298,10 +298,11 @@ export default function PrincipalScreen() {
 const styles = StyleSheet.create({
   main: { flex: 1, backgroundColor: "#f8fafc" },
   scrollContent: { paddingHorizontal: 15, paddingBottom: 30 },
-  headerContainer: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
+ headerContainer: {
+  alignItems: "center",
+  marginTop: 5,
+  marginBottom: 20,
+},
   titleRow: {
     flexDirection: "row",
     alignItems: "center",

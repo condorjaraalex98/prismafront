@@ -489,7 +489,7 @@ const zonasFiltradas = catalogos.zonas.filter((zona: any) => {
   };
 
   return (
-    <ThemedView style={[styles.main, { paddingTop: insets.top, backgroundColor: isDark ? "#ffffff" : "#f4f7f6" }]}>
+    <ThemedView style={[styles.main, {  backgroundColor: isDark ? "#ffffff" : "#f4f7f6" }]}>
       <View style={styles.stepperContainer}>
         <ThemedText style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>INICIO DE SERVICIO:</ThemedText>
         {[1, 2, 3].map((i) => (

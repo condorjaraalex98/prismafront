@@ -272,10 +272,7 @@ export default function TabLayout() {
           name="sipcop"
           options={{ title: "SIPCOP" }}
         />
-        <Drawer.Screen
-          name="sipcopd"
-          options={{ title: "SIPCOPD" }}
-        />
+      
         <Drawer.Screen
           name="exportar"
           options={{ title: "Exportar" }}

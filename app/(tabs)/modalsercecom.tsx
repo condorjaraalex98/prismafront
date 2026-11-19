@@ -1191,11 +1191,17 @@ const styles = StyleSheet.create({
   unitCardRemove: {
     padding: 8,
   },
-  stepperContainer: {
+     stepperContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginVertical: 12,
-    gap: 12,
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 10,
+  },
+  stepperTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: MJM_BLUE,
   },
   circle: {
     width: 24,
