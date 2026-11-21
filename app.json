@@ -53,7 +53,8 @@
           "speechRecognitionPermission": "Permitir el reconocimiento de voz para transcribir los detalles."
         }
       ],
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "./plugins/withOptionalPortraitFeature.js"
     ],
     "experiments": {
       "typedRoutes": false
