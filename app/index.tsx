@@ -12,6 +12,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Linking,
   TextInput,
   TouchableOpacity,
   useWindowDimensions,
@@ -22,8 +23,9 @@ import { useAuth } from "../context/userContext";
 const MJM_BLUE = "#024885";
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.19:3000";
-const BACKGROUND_IMAGE =
-  "https://www.munijesusmaria.gob.pe/wp-content/uploads/2025/01/WhatsApp-Image-2025-01-20-at-10.19.12-AM.jpeg";
+// const BACKGROUND_IMAGE =
+//   "https://www.munijesusmaria.gob.pe/wp-content/uploads/2025/01/WhatsApp-Image-2025-01-20-at-10.19.12-AM.jpeg";
+const BACKGROUND_IMAGE = require("../assets/images/fondo1.jpeg");
 
 const mostrarAlerta = (titulo: string, mensaje: string) => {
   if (Platform.OS === "web") {
@@ -169,8 +171,8 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.mainContainer}>
-      <ImageBackground
-        source={{ uri: BACKGROUND_IMAGE }}
+  <ImageBackground
+        source={BACKGROUND_IMAGE}
         style={styles.backgroundImage}
         resizeMode="cover"
       >
@@ -262,6 +264,17 @@ export default function HomeScreen() {
                       <ThemedText style={styles.supportEmail}>
                         condorjaraa@gmail.com - 997356558
                       </ThemedText>
+<TouchableOpacity
+  onPress={() =>
+    Linking.openURL("https://condorjaraalex98.github.io/prisma-ops-privacy/")
+  }
+  style={{ marginTop: 12, alignItems: "center" }}
+>
+  <ThemedText style={styles.forgotText}>
+    Política de Privacidad
+  </ThemedText>
+</TouchableOpacity>
+
                     </View>
                   )}
                 </View>
