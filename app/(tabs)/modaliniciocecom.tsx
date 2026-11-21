@@ -49,14 +49,10 @@ const MJM_BLUE = "#024885";
 const MAX_FOTOS = 1;
 
 const ZONAS_POR_PATRULLAJE: Record<number, number[]> = {
-  1: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  2: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  3: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  4: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  5: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  6: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  7: [10, 11, 12, 13, 34, 35, 36, 37, 38, 39, 40, 41, 42],
-  8: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
+ 
+7: [4, 5, 6,7],
+
+
 };
 
 const normalizeText = (text: string): string =>
@@ -331,6 +327,7 @@ export default function RegistroSerIn({
     setForm((prev) => ({
       ...prev,
       ...(userIdStable ? { id_usuario: userIdStable } : {}),
+      id_tipo_patrullaje: prev.id_tipo_patrullaje ?? 7,
       fecha_evento: getHoy(),
     }));
 

@@ -63,24 +63,25 @@ type FotoEstado = {
 const MJM_BLUE = "#024885";
 const ID_CAMIONETA = 1;
 const ID_MOTOCICLETA = 2;
+const ID_AMBULANCIA = 4;
 const ID_PATRULLAJE_MOTORIZADO = 3;
 const MAX_FOTOS = 1;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
 const ZONAS_POR_VEHICULO: Record<number, number[]> = {
-  [ID_CAMIONETA]: [1, 2, 3, 4, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  [ID_MOTOCICLETA]: [5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
+  [ID_CAMIONETA]: [1, 2,  7],
+  [ID_MOTOCICLETA]: [3,9,10,11,12,13,14,15,16,17],
+   [ID_AMBULANCIA]: [7],
 };
 
 const ZONAS_POR_PATRULLAJE: Record<number, number[]> = {
-  1: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  2: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  4: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  5: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  6: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  8: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  3: [1, 2, 3, 4, 5, 25, 26, 27, 28, 29, 30, 31, 32, 33],
-  7: [10, 11, 12, 13, 34, 35, 36, 37, 38, 39, 40, 41, 42],
+  1: [1, 2, 3, 7],
+  2: [1, 2, 3,  7],
+  3: [1, 2, 3, 7],
+  4: [1, 2, 3,  7],
+  5: [1, 2, 3,  7],
+  6: [1, 2, 3,  7],
+  8: [1, 2, 3, 7],
 };
 
 const normalizeText = (text: string): string =>
@@ -436,7 +437,7 @@ const [tempDate, setTempDate] = useState<Date>(new Date());
         tipos_patrullaje: dataGral.tipos_patrullaje || [],
         modalidades_patrullaje: dataGral.modalidades_patrullaje || [],
         tipos_vehiculo: (dataTiposV || []).filter(
-          (t: any) => Number(t.value) === 1 || Number(t.value) === 2
+          (t: any) => Number(t.value) === 1 || Number(t.value) === 2|| Number(t.value) === 4
         ),
         unidades: [],
         pnps: dataPnps || [],
