@@ -124,6 +124,7 @@ export default function RegistroSerIn({
       longitud_gps: "0",
       turno: null as any,
       nombre_punto_gps: "",
+      sector_asignado:"GENERAL",
       estadoOcurrencia: "VERIFICADO",
       referencia: "",
       id_radio: null as number | string | null,

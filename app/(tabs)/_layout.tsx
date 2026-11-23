@@ -196,10 +196,7 @@ export default function TabLayout() {
           name="crudpnp"
           options={{ title: "CrudPNP" }}
         />
-        <Drawer.Screen
-          name="rolservicio"
-          options={{ title: "RolServicio" }}
-        />
+      
         <Drawer.Screen
           name="crudvia"
           options={{ title: "CrudVia" }}
@@ -336,6 +333,10 @@ export default function TabLayout() {
         <Drawer.Screen
           name="paramedico"
           options={{ title: "Paramédico" }}
+        />
+           <Drawer.Screen
+          name="rolservicio"
+          options={{ title: "RolServicio" }}
         />
         <Drawer.Screen
           name="ambulancia"

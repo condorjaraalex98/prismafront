@@ -335,6 +335,15 @@ export const Sidebar = (props: any) => {
               onPress={() => navigateTo("estadist")}
               isSubItem
             />
+
+             <MenuOption
+              icon="pie-chart-outline"
+              label="Rol de Servicio"
+              isActive={activeRoute === "rolservicio"}
+              isExpanded={true}
+              onPress={() => navigateTo("rolservicio")}
+              isSubItem
+            />
           </CollapsibleSection>
         )}
 
