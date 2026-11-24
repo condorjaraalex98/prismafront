@@ -82,7 +82,8 @@ export const Sidebar = (props: any) => {
   const showWebStats =
     (userRolId === 1 || userRolId === 3) && !esMovil;
 
-  const showOtros = showMobileStats || showWebStats;
+ const showOtros = showMobileStats || showWebStats;
+  const showRankingSection = showOtros || userRolId === 6;
 
   return (
     <View style={styles.container}>
@@ -115,7 +116,7 @@ export const Sidebar = (props: any) => {
         <View style={styles.divider} />
 
         {/* REGISTRO DE CAMPO - MÓVIL */}
-        {[1, 2, 3].includes(userRolId) && esMovil && (
+        {[1, 2, 3,6].includes(userRolId) && esMovil && (
           <MenuOption
             icon="home-outline"
             label="Reg. Campo"
@@ -126,7 +127,7 @@ export const Sidebar = (props: any) => {
         )}
 
         {/* REGISTRO CECOM - WEB */}
-        {[1, 2, 3].includes(userRolId) && !esMovil && (
+        {[1, 2, 3,6].includes(userRolId) && !esMovil && (
           <MenuOption
             icon="home-outline"
             label="Reg. CECOM"
@@ -136,35 +137,35 @@ export const Sidebar = (props: any) => {
           />
         )}
 
-        {/* RANKING */}
-        {showOtros && (
+      {/* RANKING */}
+        {showRankingSection && (
           <CollapsibleSection
             icon="stats-chart-outline"
-            label="RANKING"
+            label="RANKING DIARIO"
             isExpanded={mostrarTexto}
             isOpen={openSection === "Ranking"}
             onToggle={() => handleToggleSection("Ranking")}
           >
-            {showMobileStats && (
-              <>
-                <MenuOption
-                  icon="stats-chart-outline"
-                  label="Est. CAMPO"
-                  isActive={activeRoute === "rcampo"}
-                  isExpanded={true}
-                  onPress={() => navigateTo("rcampo")}
-                  isSubItem
-                />
+            {(showMobileStats || userRolId === 6) && (
+              <MenuOption
+                icon="stats-chart-outline"
+                label="Est. CAMPO"
+                isActive={activeRoute === "rcampo"}
+                isExpanded={true}
+                onPress={() => navigateTo("rcampo")}
+                isSubItem
+              />
+            )}
 
-                <MenuOption
-                  icon="stats-chart-outline"
-                  label="Est. MOTO"
-                  isActive={activeRoute === "rcampomoto"}
-                  isExpanded={true}
-                  onPress={() => navigateTo("rcampomoto")}
-                  isSubItem
-                />
-              </>
+            {showMobileStats && (
+              <MenuOption
+                icon="stats-chart-outline"
+                label="Est. MOTO"
+                isActive={activeRoute === "rcampomoto"}
+                isExpanded={true}
+                onPress={() => navigateTo("rcampomoto")}
+                isSubItem
+              />
             )}
 
             {showWebStats && (
@@ -180,37 +181,7 @@ export const Sidebar = (props: any) => {
           </CollapsibleSection>
         )}
 
-        {/* OTROS */}
-        {showOtros && (
-          <CollapsibleSection
-            icon="compass-outline"
-            label="OTROS"
-            isExpanded={mostrarTexto}
-            isOpen={openSection === "Otros"}
-            onToggle={() => handleToggleSection("Otros")}
-          >
-            <MenuOption
-              icon="map-outline"
-              label="Mapas"
-              isActive={activeRoute === "mapa"}
-              isExpanded={true}
-              onPress={() => navigateTo("mapa")}
-              isSubItem
-            />
-
-            {userRolId === 1 && (
-              <MenuOption
-                icon="pin-outline"
-                label="Puntos"
-                isActive={activeRoute === "puntos"}
-                isExpanded={true}
-                onPress={() => navigateTo("puntos")}
-                isSubItem
-              />
-            )}
-          </CollapsibleSection>
-        )}
-
+       
         {/* MANTENIMIENTO */}
         {userRolId === 1 && (
           <CollapsibleSection
@@ -306,7 +277,14 @@ export const Sidebar = (props: any) => {
               onPress={() => navigateTo("principal")}
               isSubItem
             />
-
+ <MenuOption
+              icon="pie-chart-outline"
+              label="Dashboard General"
+              isActive={activeRoute === "estadist"}
+              isExpanded={true}
+              onPress={() => navigateTo("estadist")}
+              isSubItem
+            />
             <MenuOption
               icon="radio-outline"
               label="DASH 2 KILO"
@@ -319,7 +297,7 @@ export const Sidebar = (props: any) => {
         )}
 
         {/* ESTADÍSTICA */}
-        {(userRolId === 2 || userRolId === 1) && isWeb && (
+        {(userRolId === 6 || userRolId === 1) && isWeb && (
           <CollapsibleSection
             label="ESTADÍSTICA"
             icon="bar-chart-outline"
@@ -327,14 +305,6 @@ export const Sidebar = (props: any) => {
             isOpen={openSection === "ESTADISTICA"}
             onToggle={() => handleToggleSection("ESTADISTICA")}
           >
-            <MenuOption
-              icon="pie-chart-outline"
-              label="Dashboard"
-              isActive={activeRoute === "estadist"}
-              isExpanded={true}
-              onPress={() => navigateTo("estadist")}
-              isSubItem
-            />
 
              <MenuOption
               icon="pie-chart-outline"
@@ -344,8 +314,52 @@ export const Sidebar = (props: any) => {
               onPress={() => navigateTo("rolservicio")}
               isSubItem
             />
+           
+<MenuOption
+              icon="pie-chart-outline"
+              label="Dashboard Cecom"
+              isActive={activeRoute === "estadistcec"}
+              isExpanded={true}
+              onPress={() => navigateTo("estadistcec")}
+              isSubItem
+            />
+            
           </CollapsibleSection>
         )}
+
+{/* OTROS */}
+        {(showOtros || userRolId === 6) && (
+          <CollapsibleSection
+            icon="compass-outline"
+            label="OTROS"
+            isExpanded={mostrarTexto}
+            isOpen={openSection === "Otros"}
+            onToggle={() => handleToggleSection("Otros")}
+          >
+            {(showOtros || userRolId === 6) && (
+              <MenuOption
+                icon="map-outline"
+                label="Mapas"
+                isActive={activeRoute === "mapa"}
+                isExpanded={true}
+                onPress={() => navigateTo("mapa")}
+                isSubItem
+              />
+            )}
+
+            {userRolId === 1 && (
+              <MenuOption
+                icon="pin-outline"
+                label="Puntos"
+                isActive={activeRoute === "puntos"}
+                isExpanded={true}
+                onPress={() => navigateTo("puntos")}
+                isSubItem
+              />
+            )}
+          </CollapsibleSection>
+        )}
+
 
         {/* SIPCOP */}
         {(userRolId === 2 || userRolId === 1) && isWeb && (

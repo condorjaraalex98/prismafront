@@ -50,7 +50,7 @@ const MAX_FOTOS = 1;
 
 const ZONAS_POR_PATRULLAJE: Record<number, number[]> = {
  
-7: [4, 5, 6,7],
+7: [4, 5, 6,7,8],
 
 
 };

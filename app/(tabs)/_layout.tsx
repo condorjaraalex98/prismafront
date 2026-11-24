@@ -201,6 +201,12 @@ export default function TabLayout() {
           name="crudvia"
           options={{ title: "CrudVia" }}
         />
+
+         <Drawer.Screen
+          name="estadistcec"
+          options={{ title: "EstadisticaCECOM" }}
+        />
+
         <Drawer.Screen
           name="operativo"
           options={{ title: "Operativo" }}

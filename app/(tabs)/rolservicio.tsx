@@ -854,7 +854,7 @@ export default function MatrizModalidad139Screen() {
             {esVistaPorSector
               ? `Turno ${etiquetaTurno(
                   filtroTurno as TurnoCodigo
-                )} por Sector Asignado (Modalidad 139)`
+                )} por Sector`
               : "REPORTE DE SERVICIO"}
           </ThemedText>
           <View style={styles.divider} />
